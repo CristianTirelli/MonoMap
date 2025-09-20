@@ -14,16 +14,16 @@ while getopts "f:x:y:d:ii:" opt; do
     \?) echo "Invalid option -$OPTARG" >&2; exit 1 ;;
   esac
 done
-echo "$X"
-echo "$Y"
+#echo "$X"
+#echo "$Y"
 ./llvm-project/build/bin/clang -O3 -fno-unroll-loops -fno-vectorize -fno-slp-vectorize -S -emit-llvm -o extracted.ll "$F"
 ./llvm-project/build/bin/opt -disable-output extracted.ll -passes=cgra-extract
 
 for folder in acc*; do
     if [ -d "$folder" ]; then
-    python3 mapper/monomap.py -path "$folder"/acc_edges -x "$X" -y "$Y" -d "$D" -II "$II" > cgra-mono-code-"$folder"
+    python3 mapper/monomap.py -path "$folder"/acc_edges -x "$X" -y "$Y" -d "$D" -II "$II"
     fi
 done
 
-rm -r acc*
+#rm -r acc*
 rm extracted.ll

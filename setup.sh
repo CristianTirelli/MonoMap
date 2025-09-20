@@ -5,7 +5,7 @@ git submodule update --recursive
 mkdir -p llvm-project/build
 cd llvm-project/build
 cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS="clang;" ../llvm
-ninja -j 1
+ninja -j 20
 cd -
 python3 -m venv cgra-compiler
 . mono-compiler/bin/activate
