@@ -21,12 +21,15 @@ from collections import defaultdict
 
 def generatePKE(schedule_it, II):
 
+    print("II: ", II)
+    print()
     n_iterations = len(schedule_it[0])
     #print("n iterations", n_iterations)
     pke = {}
+    print("PKE")
     if n_iterations < 2: 
         for t in range(len(schedule_it)):
-            print("T=" + str(t), schedule_it[t][0])
+            print("t:" + str(t),  " ".join(str(n) for n in schedule_it[t][0]))
         return
 
     schedule = {}
@@ -43,7 +46,7 @@ def generatePKE(schedule_it, II):
     #for t in range(len(schedule)):
     #    print("T=" + str(t), schedule[t])
 
-    print("PKE")
+    
 
     for i in range(1, n_iterations):
         offset = i * II
@@ -53,9 +56,10 @@ def generatePKE(schedule_it, II):
                 pke[t + offset] = []
 
             pke[t + offset] = list(set(pke[t + offset] + schedule[t]))
-    print("II", II)
+    
     for t in range(len(pke)):
-        print("T=" + str(t), pke[t])
+        print("t:" + str(t),  " ".join(str(n) for n in pke[t]))
+    return
     
 
 
