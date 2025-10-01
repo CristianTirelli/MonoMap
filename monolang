@@ -25,5 +25,5 @@ for folder in acc*; do
     fi
 done
 
-#rm -r acc*
+rm -r acc*
 rm extracted.ll

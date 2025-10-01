@@ -42,7 +42,7 @@ def generatePKE(schedule_it, II):
             schedule[idx] = schedule_it[t][it] + schedule[idx]
          
     pke = copy.copy(schedule)
-
+    #print("schedule")
     #for t in range(len(schedule)):
     #    print("T=" + str(t), schedule[t])
 
@@ -61,7 +61,13 @@ def generatePKE(schedule_it, II):
         print("t:" + str(t),  " ".join(str(n) for n in pke[t]))
     return
     
+def getBranchId(dfg):
+    # we assume that the node with the highest id is the branch instruciton in the dfg
+    max_id = 0
+    for n in dfg.nodes:
+        max_id = max(max_id, n)
 
+    return max_id
 
 def getMaxOutDegree(dfg):
 
@@ -411,12 +417,9 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
     schedule_result = {}
     schedule_it = {}
     valid_schedule = False
-    #graph = graph.to_undirected()
-    #ss = list(nx.weakly_connected_components(graph))
-    #print("weak", len(ss))
-    #for sg in ss:
-    #    print(len(sg))
-    #exit(0)
+    br_node = getBranchId(graph)
+    print("br node", br_node)
+    
     while(not valid_schedule):
         s = Solver()
         #print("Scheduling solver timeout set")
@@ -505,8 +508,9 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
 
             #print(source, destination)
             tmp = []
+
             for (cs, cd) in itertools.product(c_n_it_literal, c_n_it_literal):
-                if (source not in c_n_it_literal[cs]) or (destination not in c_n_it_literal[cd]):
+                if (source not in c_n_it_literal[cs]) or (destination not in c_n_it_literal[cd]) or (destination == br_node and cd != II - 1):
                     continue
                 
                 for (it1, it2) in itertools.product(c_n_it_literal[cs][source], c_n_it_literal[cd][destination]):
@@ -699,11 +703,7 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
                 s.add(Or(block))
                 if model_number == 4:#4
                     break
-            #m = s.model()
-            # 5x5 II 3
-            #[ 16 3 25 40 47 4 10 29 34 0 20 46 43 28 7 50 11 38 ]
-            #[ 30 21 39 49 37 44 26 41 5 23 17 19 32 1 8 14 35 12 ]
-            #[ 42 13 33 24 22 48 6 27 15 36 9 18 2 45 31 ]       
+            #m = s.model()     
             valid_schedule = True
             #print(m)
             for t in m.decls():
@@ -713,7 +713,6 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
                     nodeid = int(tmp[1])
                     cycle = int(tmp[2])
                     iteration = int(tmp[3])
-                        #
                     if cycle not in schedule_result:
                         schedule_result[cycle] = []
                     
@@ -731,10 +730,6 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
         #print("Time to find schedule: " + str(end - start))
         II += 1
 
-    
-    
-    # Schedule feasibility constraints
-    #for c in scheduling_combinations:
 
     return [schedule_result, schedule_it]
 
