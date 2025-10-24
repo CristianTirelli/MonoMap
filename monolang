@@ -3,14 +3,14 @@
 X=4
 Y=4
 D=5
-II=-1
-while getopts "f:x:y:d:ii:" opt; do
+I=-1
+while getopts "f:x:y:d:i:" opt; do
   case $opt in
     f) F=$OPTARG ;;
     x) X=$OPTARG ;;
     y) Y=$OPTARG ;;
     d) D=$OPTARG ;;
-    ii) II= $OPTARG ;;
+    i) II=$OPTARG ;;
     \?) echo "Invalid option -$OPTARG" >&2; exit 1 ;;
   esac
 done
@@ -21,7 +21,7 @@ done
 
 for folder in acc*; do
     if [ -d "$folder" ]; then
-    python3 mapper/monomap.py -path "$folder"/acc_edges -x "$X" -y "$Y" -d "$D" -II "$II"
+    python3 mapper/monomap.py -path "$folder"/acc_edges -x "$X" -y "$Y" -d "$D" -i "$II"
     fi
 done
 

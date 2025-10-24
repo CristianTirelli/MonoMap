@@ -175,7 +175,7 @@ def map(dfg, arch, II, topology_degree, size_y, size_x):
     # Convert DFG to undirected graph
     dfg = dfg.to_undirected()
 
-    #print("Monomorphism search start...")
+    print("Monomorphism search start...")
 
     # Assign attributes to DFG nodes
     # the attribute for every node is 
@@ -190,7 +190,7 @@ def map(dfg, arch, II, topology_degree, size_y, size_x):
     #GM = nx.isomorphism.GraphMatcher(arch, dfg)
     GM = nx.isomorphism.GraphMatcher(arch, dfg, nm)
     start = time.time()
-    ii = 0
+    map_idx = 0 # change this to get a different monomorphism
     for m in GM.subgraph_monomorphisms_iter():
         #print(m)
         node_pe = {}
@@ -206,9 +206,9 @@ def map(dfg, arch, II, topology_degree, size_y, size_x):
             else:
                 print("should not happend", m[k], k,  m)
 
-        if ii == 0:
+        if map_idx == 0:
             break
-        ii += 1
+        map_idx += 1
         
     end = time.time()
     total_time += (end-start)
@@ -776,7 +776,7 @@ def main():
     parser.add_argument('-x', type=int, help='Number or rows in the CGRA (default value: 4)', default=4)
     parser.add_argument('-y', type=int, help='Number or rows in the CGRA (default value: 4)', default=4)
     parser.add_argument('-d', type=int, help='Topology degree (default value: 5)', default=5)
-    parser.add_argument('-II', type=int, help='Iteration Itnerval (default value: -1)', default=-1)
+    parser.add_argument('-i', type=int, help='Iteration Itnerval (default value: -1)', default=-1)
     
 
     #Parse Arguments
@@ -830,9 +830,10 @@ def main():
     #print("#nodes: ",len(dfg.nodes))
     #print("#edges: ",len(dfg.edges))
     #print("#maxdegree: ", getMaxOutDegree(dfg))
-    if int(args.II) != -1:
-        II = int(args.II)
-        #print("Manually setting II to", II)
+    print(args.i)
+    if int(args.i) != -1:
+        II = int(args.i)
+        print("Manually setting II to", II)
 
 
     map(dfg, arch, II, topology_degree, CGRA_Y, CGRA_X)
