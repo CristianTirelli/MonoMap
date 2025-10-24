@@ -7,6 +7,6 @@ cd llvm-project/build
 cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS="clang;" ../llvm
 ninja -j 1
 cd -
-python3 -m venv cgra-compiler
+python3 -m venv mono-compiler
 . mono-compiler/bin/activate
 python3 -m pip install -r requirements.txt

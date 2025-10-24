@@ -8,6 +8,10 @@ import itertools
 import xml.dom.minidom
 import threading
 import argparse
+import csv
+import pickle
+
+from random import randint
 
 import xml.etree.ElementTree as ET
 import networkx as nx
@@ -62,7 +66,9 @@ def map(dfg, arch, II, topology_degree, size_y, size_x):
     end = time.time()
     print("End schedule generation: ", (end - start))
 
-
+    schedule[0] = [0, 2, 5]
+    schedule[1] = [1, 3, 6]
+    schedule[2] = [4]
 
     total_time += (end-start)
     II = len(schedule)
@@ -85,39 +91,43 @@ def map(dfg, arch, II, topology_degree, size_y, size_x):
     # Generate architecture graph
 
     # Generate nodes for each time step
-    node_id = 0
-    t = II
-    nodes = {}
-    for i in range(t):
-        if i not in nodes:
-            nodes[i] = []
-        for m in range(0, size_x):
-            for n in range(0, size_y):
-                nodes[i].append(node_id)
-                node_id += 1
-
-    t = II
-    # Add dependency edges
-    print("Start architecture graph generation")
-    start = time.time()
-    for i in range(0, t):
-        for j in range(0, t):
-            #if i == j: continue
-            for n_i in nodes[i]:
-                for n_j in nodes[j]:
-                    if n_i == n_j and i==j: 
-                        continue
-
-                    if isConnected(n_i % (size_x * size_y), n_j % (size_x * size_y), size_y, size_x):
-                        arch.add_node(n_i)
-                        arch.add_node(n_j)
-
-                        arch.nodes[n_i]['time'] = i
-                        arch.nodes[n_j]['time'] = j
-    
-                        arch.add_edge(n_i, n_j)
-    end = time.time()
+    #node_id = 0
+    #t = II
+    #nodes = {}
+    #for i in range(t):
+    #    if i not in nodes:
+    #        nodes[i] = []
+    #    for m in range(0, size_x):
+    #        for n in range(0, size_y):
+    #            nodes[i].append(node_id)
+    #            node_id += 1
+#
+    #t = II
+    ## Add dependency edges
+    #print("Start architecture graph generation")
+    #start = time.time()
+    #for i in range(0, t):
+    #    for j in range(0, t):
+    #        #if i == j: continue
+    #        for n_i in nodes[i]:
+    #            for n_j in nodes[j]:
+    #                if n_i == n_j and i==j: 
+    #                    continue
+#
+    #                if isConnected(n_i % (size_x * size_y), n_j % (size_x * size_y), size_y, size_x):
+    #                    arch.add_node(n_i)
+    #                    arch.add_node(n_j)
+#
+    #                    arch.nodes[n_i]['time'] = i
+    #                    arch.nodes[n_j]['time'] = j
+    #
+    #                    arch.add_edge(n_i, n_j)
+    #end = time.time()
     print("Time to generate architecture: " + str(end - start))                  
+    #load graph 
+    with open("arch_graph20x20_20.pkl", "rb") as f:
+        arch = pickle.load(f)
+
 
     #write_dot(G1, "G1.dot")
     # Convert DFG to undirected graph
@@ -139,12 +149,21 @@ def map(dfg, arch, II, topology_degree, size_y, size_x):
     GM = nx.isomorphism.GraphMatcher(arch, dfg, nm)
     start = time.time()
     ii = 0
+    row = []
+    new_row = [""]
+    for t in range(II):
+        for p in range(size_x * size_y):
+            new_row.append("PE" + str(p) + " at time " + str(t))
+    new_row.append("Valid")
+    row.append(new_row)
+    
+
     for m in GM.subgraph_monomorphisms_iter():
         #print(m)
         node_pe = {}
         pe_nodes = {}
         for k in m:
-            #print("Node: " + str(m[k]) + " on PE: " + str(k) + "=" + str(k % (CGRA_X*CGRA_Y)) )
+            #print("Node: " + str(m[k]) + " on PE: " + str(k) + "=" + str(k % (size_x*size_y)) )
             if k % (size_x * size_y) not in pe_nodes:
                 pe_nodes[k % (size_x * size_y)] = []
             pe_nodes[k % (size_x * size_y)].append(m[k])
@@ -153,11 +172,45 @@ def map(dfg, arch, II, topology_degree, size_y, size_x):
                 node_pe[m[k]] = k % (size_x * size_y)
             else:
                 print("should not happend", m[k], k,  m)
+        
+        #print("Solution: ", ii)
+        #for i in range(0, II):
+        #    for n in schedule[i]:
+        #        print("\tNode ", n, " Mapped on PE ", node_pe[n], " at time ", i)
+        #print("")
+        #new_row = ["map" + str(ii + 100000)]
+        #for t in range(0, II):  
+        #    #print(t)     
+        #    for p in range(size_x * size_y):
+        #        #print("PE" + str(p) + " at time " + str(t), new_row[-1])
+        #        #print(pe_nodes)
+        #        
+        #        if p in pe_nodes:
+        #            found = False
+        #            for n in pe_nodes[p]:
+        #                if n in schedule[t]:
+        #                    new_row.append(int(n))
+        #                    found = True
+        #                    break
+        #            if not found:
+        #                new_row.append(-1)
+        #        else:
+        #            new_row.append(-1)
+        #        #print("PE" + str(p) + " at time " + str(t), new_row[-1])
+        #new_row.append(0)
+        #row.append(new_row)
 
+        #print(new_row)
+        
         if ii == 0:
             break
         ii += 1
-        
+
+    #print(ii)
+    #with open("csv_invalid_space_negated_mappings", mode='w', newline='') as file:
+    #    writer = csv.writer(file)
+    #    writer.writerows(row)
+
     end = time.time()
     total_time += (end-start)
     print("Time for monomorphism search: " + str(end - start))
@@ -189,7 +242,38 @@ def getTime(node, schedule):
     print("Error while getting scheduling time of node")
     exit(0)
 
+def isConnected2(pe1, pe2, size_y, size_x):
+
+        #return random.randint(0,1)
+        i1 = pe1 // size_y
+        j1 = pe1 % size_y
+
+        i2 = pe2 // size_y
+        j2 = pe2 % size_y
+
+        #same row
+        if i1 == i2:
+            if (pe1 == pe2 + 1) or (pe1 == pe2 - 1):
+                return False
+            if abs(pe1 - pe2) == size_y - 1:
+                return False
+
+        #same col
+        if j1 == j2:
+            if (pe1 == pe2 + size_y) or (pe1 == pe2 - size_y):
+                return False
+            if abs(i1 - i2) == size_x - 1:
+                return False
+        #center
+        if pe1 == pe2:
+            return False
+
+        return True
+
+#original below
 def isConnected(pe1, pe2, size_y, size_x):
+
+        
         i1 = pe1 // size_y
         j1 = pe1 % size_y
 
@@ -214,6 +298,7 @@ def isConnected(pe1, pe2, size_y, size_x):
             return True
 
         return False
+
 
 def get_back_edges(graph):    
     back_edges = []
@@ -727,7 +812,7 @@ def main():
     parser.add_argument('-x', type=int, help='Number or rows in the CGRA (default value: 4)', default=4)
     parser.add_argument('-y', type=int, help='Number or rows in the CGRA (default value: 4)', default=4)
     parser.add_argument('-d', type=int, help='Topology degree (default value: 5)', default=5)
-    parser.add_argument('-II', type=int, help='Iteration Itnerval (default value: -1)', default=-1)
+    parser.add_argument('-i', type=int, help='Iteration Itnerval (default value: -1)', default=-1)
     
 
     #Parse Arguments
@@ -769,8 +854,8 @@ def main():
     ResII = math.ceil(len(dfg.nodes) / CGRA_SIZE)
     for ec in nx.recursive_simple_cycles(dfg):
         RecII = max(RecII, len(ec))
-        #print(ec)
-    print("RecII is computed with recursive_simple_cycles from networkX.\nSometimes it doesn't provide the correct lowerbound.\nTo manually set the II , use the -II option.")
+        print("EC",ec)
+    print("RecII is computed with recursive_simple_cycles from networkX.\nSometimes it doesn't provide the correct lowerbound.\nTo manually set the II , use the -i option.")
     # Should be max(recII, resII), but there is a bug in some cases.
     # SAT-MapIt computes the correct lowerbound
     # Only looking at the length of the recursive simple cycle
@@ -781,8 +866,8 @@ def main():
     print("#nodes: ",len(dfg.nodes))
     print("#edges: ",len(dfg.edges))
     print("#maxdegree: ", getMaxOutDegree(dfg))
-    if int(args.II) != -1:
-        II = int(args.II)
+    if int(args.i) != -1:
+        II = int(args.i)
         print("Manually setting II to", II)
 
 
