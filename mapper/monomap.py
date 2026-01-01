@@ -33,6 +33,16 @@ def getMaxOutDegree(dfg):
     
     return max_degree
 
+def computeTopologyDegree(size_y, size_x):
+    # Works only for 2D-mesh topology
+    counter = 0
+    
+    for j in range(size_y * size_x):
+        if isConnected(0, j, size_y, size_x):
+            counter += 1
+
+    return counter
+        
 
 def check_solution(pe_nodes, dfg, size_y, size_x):
 
@@ -706,7 +716,13 @@ def main():
         II = int(args.i)
         print("Manually setting II to", II)
 
-
+    if(topology_degree > computeTopologyDegree(CGRA_Y, CGRA_X)):
+        print("Topology check failed!")
+        print("Invalid degree for 2D-mesh topology!")
+        print("Expected ", computeTopologyDegree(CGRA_Y, CGRA_X), "Got ", topology_degree)
+        print("Remove this check if you defined your own topology by modifying the function isConnected")
+        exit(0)
+        
     map(dfg, arch, II, topology_degree, CGRA_Y, CGRA_X)
 
     
