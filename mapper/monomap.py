@@ -66,10 +66,6 @@ def map(dfg, arch, II, topology_degree, size_y, size_x):
     end = time.time()
     print("End schedule generation: ", (end - start))
 
-    schedule[0] = [0, 2, 5]
-    schedule[1] = [1, 3, 6]
-    schedule[2] = [4]
-
     total_time += (end-start)
     II = len(schedule)
     print("Len schedule", II)
@@ -84,49 +80,44 @@ def map(dfg, arch, II, topology_degree, size_y, size_x):
                 print("Node ", n, "overscheduling of childs")
                 exit(0)
         print(i, sorted(schedule[i]))
-    #II = 70
-    #schedule[0] = [ 16, 3, 25, 40, 47, 4, 10, 29, 34, 0, 20, 46, 43, 28, 7, 50 ,11, 38 ]
-    #schedule[1] = [ 30, 21, 39, 49, 37, 44, 26, 41, 5, 23, 17, 19, 32, 1, 8, 14, 35, 12 ]
-    #schedule[2] = [ 42, 13, 33, 24, 22, 48, 6, 27, 15, 36, 9, 18, 2, 45, 31 ]       
+    
     # Generate architecture graph
 
     # Generate nodes for each time step
-    #node_id = 0
-    #t = II
-    #nodes = {}
-    #for i in range(t):
-    #    if i not in nodes:
-    #        nodes[i] = []
-    #    for m in range(0, size_x):
-    #        for n in range(0, size_y):
-    #            nodes[i].append(node_id)
-    #            node_id += 1
-#
-    #t = II
-    ## Add dependency edges
-    #print("Start architecture graph generation")
-    #start = time.time()
-    #for i in range(0, t):
-    #    for j in range(0, t):
-    #        #if i == j: continue
-    #        for n_i in nodes[i]:
-    #            for n_j in nodes[j]:
-    #                if n_i == n_j and i==j: 
-    #                    continue
-#
-    #                if isConnected(n_i % (size_x * size_y), n_j % (size_x * size_y), size_y, size_x):
-    #                    arch.add_node(n_i)
-    #                    arch.add_node(n_j)
-#
-    #                    arch.nodes[n_i]['time'] = i
-    #                    arch.nodes[n_j]['time'] = j
+    node_id = 0
+    t = II
+    nodes = {}
+    for i in range(t):
+        if i not in nodes:
+            nodes[i] = []
+        for m in range(0, size_x):
+            for n in range(0, size_y):
+                nodes[i].append(node_id)
+                node_id += 1
+
+    t = II
+    # Add dependency edges
+    print("Start architecture graph generation")
+    start = time.time()
+    for i in range(0, t):
+        for j in range(0, t):
+            #if i == j: continue
+            for n_i in nodes[i]:
+                for n_j in nodes[j]:
+                    if n_i == n_j and i==j: 
+                        continue
+                    if isConnected(n_i % (size_x * size_y), n_j % (size_x * size_y), size_y, size_x):
+                        arch.add_node(n_i)
+                        arch.add_node(n_j)
+
+                        arch.nodes[n_i]['time'] = i
+                        arch.nodes[n_j]['time'] = j
     #
-    #                    arch.add_edge(n_i, n_j)
-    #end = time.time()
+                        arch.add_edge(n_i, n_j)
+    end = time.time()
     print("Time to generate architecture: " + str(end - start))                  
-    #load graph 
-    with open("arch_graph20x20_20.pkl", "rb") as f:
-        arch = pickle.load(f)
+    
+    
 
 
     #write_dot(G1, "G1.dot")
@@ -242,35 +233,6 @@ def getTime(node, schedule):
     print("Error while getting scheduling time of node")
     exit(0)
 
-def isConnected2(pe1, pe2, size_y, size_x):
-
-        #return random.randint(0,1)
-        i1 = pe1 // size_y
-        j1 = pe1 % size_y
-
-        i2 = pe2 // size_y
-        j2 = pe2 % size_y
-
-        #same row
-        if i1 == i2:
-            if (pe1 == pe2 + 1) or (pe1 == pe2 - 1):
-                return False
-            if abs(pe1 - pe2) == size_y - 1:
-                return False
-
-        #same col
-        if j1 == j2:
-            if (pe1 == pe2 + size_y) or (pe1 == pe2 - size_y):
-                return False
-            if abs(i1 - i2) == size_x - 1:
-                return False
-        #center
-        if pe1 == pe2:
-            return False
-
-        return True
-
-#original below
 def isConnected(pe1, pe2, size_y, size_x):
 
         
@@ -449,12 +411,7 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
     back_edges = get_back_edges(graph)
     schedule_result = {}
     valid_schedule = False
-    #graph = graph.to_undirected()
-    #ss = list(nx.weakly_connected_components(graph))
-    #print("weak", len(ss))
-    #for sg in ss:
-    #    print(len(sg))
-    #exit(0)
+    
     while(not valid_schedule):
         s = Solver()
         #print("Scheduling solver timeout set")
@@ -529,11 +486,8 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
                 c_n_it_literal[cycle][nodeid][iteration] = {}
                 
             c_n_it_literal[cycle][nodeid][iteration] = literal
-        #for t in KMS:
-        #    print(t, KMS[t])
-        # Start encoding scheduling constraints
-
         
+        # Start encoding scheduling constraints
         for e in graph.edges:
             if e in back_edges:
                 continue
@@ -592,53 +546,6 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
             II += 1
             continue
 
-
-        #exit(0)
-
-
-        '''
-        for n in graph.nodes:
-            print("Encoding ",n)
-            successors = list(graph.successors(n))
-            #print(successors)
-            scheduling_combinations = []
-            for c in n_c_it_literal[n]:
-                for it in n_c_it_literal[n][c]:
-
-                    cycles = [n_c_it_literal[s] for s in successors]
-                    cartesian_cycles = itertools.product(*cycles)
-
-                    for cycles_tuple in cartesian_cycles:
-
-                        iterations = []
-                        for (cycle, partial_cycles_dict) in zip(cycles_tuple, cycles):
-                            iterations.append(partial_cycles_dict[cycle])
-                        
-                        cartesian_iterations = itertools.product(*iterations)
-
-                        for iterations_tuple in cartesian_iterations:
-                            #print(iterations_tuple)
-                            if check_placement_feasibility(n, it, c, iterations_tuple, cycles_tuple, successors, back_edges, topology_degree):
-                                tmp_comb = [n_c_it_literal[n][c][it]]
-                                for (n_d, c_d, it_d) in zip(successors, cycles_tuple, iterations_tuple):
-                                    tmp_comb.append(n_c_it_literal[n_d][c_d][it_d])
-                                
-                                scheduling_combinations.append(And(tmp_comb))
-                                #continue
-                                                       
-            
-            if len(scheduling_combinations) > 1:
-                s.add(Or(scheduling_combinations))
-            elif len(scheduling_combinations) == 1:
-                s.add(scheduling_combinations)
-            else:
-                print("Not all constraints encoded")
-                fully_encoded = False
-
-        if not fully_encoded:
-            II += 1
-            continue
-        '''
         # Only one literal must be set to true
         for nodeid in node_literals:
             if len(node_literals[nodeid]) == 1:
@@ -652,8 +559,6 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
             exactlyone = And(phi,tmp)
             s.add(exactlyone)
 
-
-        
         # Capacity constraints
         # Constraints on number of nodes scheduled at each time step
         # Every time steps cannot contain more than CGRA_X * CGRA_Y nodes
@@ -672,12 +577,6 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
                         if nid in successors:
                             tmp.append(c_n_it_literal[ck][nid][it])
                     s.add(Sum(tmp) <= topology_degree)
-                #exit(0)
-
-
-
-            
-            #exit(0)
 
         # Set node with mobility == 1 to True
         for n in graph:
@@ -704,20 +603,6 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
         if s.check() == sat:
             #print("SAT")
             m = s.model()
-            #
-            #valid_schedule = True
-            ##print(m)
-            #for t in m.decls():
-            #    #print(t, m[t])
-            #    if is_true(m[t]):
-            #        tmp = str(t).split('_')
-            #        nodeid = int(tmp[1])
-            #        cycle = int(tmp[2])
-            #        iteration = int(tmp[3])
-            #
-            #        if cycle not in schedule_result:
-            #            schedule_result[cycle] = []
-            #        schedule_result[cycle].append(nodeid)
             model_number = 0
             while s.check() == sat:
                 
@@ -737,11 +622,7 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
                 s.add(Or(block))
                 if model_number == 4:#4
                     break
-            #m = s.model()
-            # 5x5 II 3
-            #[ 16 3 25 40 47 4 10 29 34 0 20 46 43 28 7 50 11 38 ]
-            #[ 30 21 39 49 37 44 26 41 5 23 17 19 32 1 8 14 35 12 ]
-            #[ 42 13 33 24 22 48 6 27 15 36 9 18 2 45 31 ]       
+            
             valid_schedule = True
             #print(m)
             for t in m.decls():
@@ -761,10 +642,6 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
         print("Time to find schedule: " + str(end - start))
         II += 1
 
-    
-
-    # Schedule feasibility constraints
-    #for c in scheduling_combinations:
 
     return schedule_result
 
@@ -854,7 +731,7 @@ def main():
     ResII = math.ceil(len(dfg.nodes) / CGRA_SIZE)
     for ec in nx.recursive_simple_cycles(dfg):
         RecII = max(RecII, len(ec))
-        print("EC",ec)
+        #print("EC",ec)
     print("RecII is computed with recursive_simple_cycles from networkX.\nSometimes it doesn't provide the correct lowerbound.\nTo manually set the II , use the -i option.")
     # Should be max(recII, resII), but there is a bug in some cases.
     # SAT-MapIt computes the correct lowerbound
