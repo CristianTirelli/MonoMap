@@ -139,16 +139,7 @@ def map(dfg, arch, II, topology_degree, size_y, size_x):
     #GM = nx.isomorphism.GraphMatcher(arch, dfg)
     GM = nx.isomorphism.GraphMatcher(arch, dfg, nm)
     start = time.time()
-    ii = 0
-    row = []
-    new_row = [""]
-    for t in range(II):
-        for p in range(size_x * size_y):
-            new_row.append("PE" + str(p) + " at time " + str(t))
-    new_row.append("Valid")
-    row.append(new_row)
-    
-
+    map_id = 0
     for m in GM.subgraph_monomorphisms_iter():
         #print(m)
         node_pe = {}
@@ -163,44 +154,12 @@ def map(dfg, arch, II, topology_degree, size_y, size_x):
                 node_pe[m[k]] = k % (size_x * size_y)
             else:
                 print("should not happend", m[k], k,  m)
-        
-        #print("Solution: ", ii)
-        #for i in range(0, II):
-        #    for n in schedule[i]:
-        #        print("\tNode ", n, " Mapped on PE ", node_pe[n], " at time ", i)
-        #print("")
-        #new_row = ["map" + str(ii + 100000)]
-        #for t in range(0, II):  
-        #    #print(t)     
-        #    for p in range(size_x * size_y):
-        #        #print("PE" + str(p) + " at time " + str(t), new_row[-1])
-        #        #print(pe_nodes)
-        #        
-        #        if p in pe_nodes:
-        #            found = False
-        #            for n in pe_nodes[p]:
-        #                if n in schedule[t]:
-        #                    new_row.append(int(n))
-        #                    found = True
-        #                    break
-        #            if not found:
-        #                new_row.append(-1)
-        #        else:
-        #            new_row.append(-1)
-        #        #print("PE" + str(p) + " at time " + str(t), new_row[-1])
-        #new_row.append(0)
-        #row.append(new_row)
 
-        #print(new_row)
         
-        if ii == 0:
+        if map_id == 0:
             break
-        ii += 1
+        map_id += 1
 
-    #print(ii)
-    #with open("csv_invalid_space_negated_mappings", mode='w', newline='') as file:
-    #    writer = csv.writer(file)
-    #    writer.writerows(row)
 
     end = time.time()
     total_time += (end-start)
