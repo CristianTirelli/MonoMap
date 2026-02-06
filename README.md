@@ -48,7 +48,7 @@ After adding the ```#pragma cgra acc```  directive to your code, compile it with
 By default, the code will be compiled for a 4x4 CGRA. To specify a different CGRA size, use the `-x` and `-y` options. For example, to compile for a 5x5 CGRA, run:
 
 ```bash
-./cgralang -f benchmarks/sha2/sha.c -x 5 -y 5
+./monolang -f benchmarks/sha2/sha.c -x 5 -y 5
 ```
 ## Output
 The output of the compiler is a file called `cgra-mono-code-acc`, which includes various debug information and the mapping result.
