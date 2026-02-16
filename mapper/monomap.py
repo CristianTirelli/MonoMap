@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from enum import Enum
 import sys
 import math
 import time
@@ -21,30 +22,84 @@ from queue import Queue, Empty
 from networkx.drawing.nx_agraph import write_dot
 from networkx.algorithms import isomorphism
 from collections import defaultdict
+from networkx.classes.digraph import DiGraph
+from networkx.classes.graph import Graph
 
+from plots import saveFigDFG, saveFigMappingsCGRA
 
+# from sa_random_worst_node import simulatedAnnealingSearch
+from sa_random_node import simulatedAnnealingSearch
+# from sa_best_edges import simulatedAnnealingSearch
 
+# Q: for questions that arose
 
-def getMaxOutDegree(dfg):
+class SpaceSearchAlgorithm(Enum):
+    MONOMORPHISM: int = 0
+    SIMULATED_ANNEALING: int = 1
+
+def getMaxOutDegree(dfg: DiGraph) -> int:
+    """
+    Computes the max out degree of the dfg. Considers all nodes in the dfg.
+
+    Args:
+        dfg (DiGraph): Data Flow Graph
+
+    Returns:
+        int: Degree of node with maximum out degree
+    """
 
     max_degree = 0
     for n in dfg.nodes:
         max_degree = max(max_degree, dfg.out_degree(n))
-    
+
     return max_degree
 
-def computeTopologyDegree(size_y, size_x):
+
+def computeTopologyDegree(size_y: int, size_x: int):
+    """
+    Computes the topology degree of CGRA Chip of size `size_y * size_x`.
+
+    Works only for 2D-mesh topology.
+
+    Assumes that PEs connections happear only between adjacent PEs, where edge PEs wrap around.
+
+    Args:
+        size_y (int): Number of PEs rows
+        size_x (int): Number of PEs columns
+
+    Returns:
+        bool: Degree of node with maximum out degree
+    """
+
     # Works only for 2D-mesh topology
     counter = 0
-    
+
     for j in range(size_y * size_x):
         if isConnected(0, j, size_y, size_x):
             counter += 1
 
     return counter
-        
 
-def check_solution(pe_nodes, dfg, size_y, size_x):
+
+def check_solution(pe_nodes: dict, dfg: DiGraph, size_y: int, size_x: int) -> bool:
+    """
+    Checks if the solution is correct, i.e. if each dependency in the `dfg` is respected by the spatial positioning of PEs.
+
+    It does so by looping over each DFG edge, for all dependencies it finds the origin in the `pe_nodes`, i.e. at whcih PE
+    it is assigned the origin, then it finds the destination is `pe_nodes` and checks that the two PEs (orirign and destination)
+    are connected.
+
+    It does not take into account the times at which those operations are scheduled, checks only that they are connected.
+
+    Args:
+        pe_nodes (dict): Holds the operatios that are scheduled in a give PE: PE -> list[operation] and each operation index is the index of the assigned PE
+        dfs (DiGraph): Data Flow Graph
+        size_y (int): Number of PEs rows
+        size_x (int): Number of PEs columns
+
+    Returns:
+        bool: True if dependencies are conneted in the CGRA, False otherwise
+    """
 
     for e in dfg.edges:
         source = e[0]
@@ -53,11 +108,15 @@ def check_solution(pe_nodes, dfg, size_y, size_x):
             if source in pe_nodes[ps]:
                 for pd in pe_nodes:
                     if destination in pe_nodes[pd]:
-                        if isConnected(pd,ps,size_y, size_x) == False:
+                        # Q: hows 0 and 13 dependency respected? is it that it does not matter if there are multiple clock times and operations between each operation and their respective PEs? For example, result of 0 at t = 3 can be stored in a registed until operation 13 ar t = 7 comes up and picks it from a connected PE?
+                        # Yes! Since MRRG has edges from PE 0 to any adjacent PE at any clocktime t
+                        # print(f"Checkign connection for source: {source}, destination: {destination} and respective ps: {ps}, pd: {pd}")
+                        if isConnected(pd, ps, size_y, size_x) == False:
                             return False
     return True
 
-def getMobilityValue(kms, node):
+
+def getMobilityValue(kms, node) -> int:
     mobility = 0
     for t in kms:
         for p in kms[t]:
@@ -65,7 +124,8 @@ def getMobilityValue(kms, node):
                 mobility += 1
     return mobility
 
-def map(dfg, arch, II, topology_degree, size_y, size_x):
+
+def map(dfg: DiGraph, arch: Graph, II: int, topology_degree: int, size_y: int, size_x: int, SSA: SpaceSearchAlgorithm):
     array_size = size_y * size_x
     # TODO: should put in the que the mapping
     total_time = 0
@@ -75,8 +135,8 @@ def map(dfg, arch, II, topology_degree, size_y, size_x):
     schedule = generate_valid_schdule(dfg, II, array_size, topology_degree)
     end = time.time()
     print("End schedule generation: ", (end - start))
-
-    total_time += (end-start)
+    
+    total_time += (end - start)
     II = len(schedule)
     print("Len schedule", II)
     print("Schedule")
@@ -86,17 +146,21 @@ def map(dfg, arch, II, topology_degree, size_y, size_x):
             for succ in list(dfg.successors(n)):
                 if int(succ) in schedule[i]:
                     count += 1
+            # Q: why 5? Whats overscheduling of children? Shouldnt it be count greather than size (size_x*size_y)?
             if count > 5:
                 print("Node ", n, "overscheduling of childs")
                 exit(0)
         print(i, sorted(schedule[i]))
-    
+        
+	# The Iteration Interval -> II: int, holds the total length of the schedule
+    # The schedule -> schedule: str(int) -> list[int], holds which operation has to be tone at which time
+	
     # Generate architecture graph
 
     # Generate nodes for each time step
     node_id = 0
     t = II
-    nodes = {}
+    nodes: dict[str, list[int]] = {}
     for i in range(t):
         if i not in nodes:
             nodes[i] = []
@@ -105,78 +169,95 @@ def map(dfg, arch, II, topology_degree, size_y, size_x):
                 nodes[i].append(node_id)
                 node_id += 1
 
+    # Nodes -> nodes: str(int) -> list[int], holds the indexes of each PE, generated as many as II length
+    # print(f"\nNodes\n")
+    # for n in nodes:
+    #     print(f"{n}: {nodes[n]}")
+    # print(f"\n")
+
     t = II
+	# The time t -> t: int, holds the total length of the schedule (Iteration Interval)
+
     # Add dependency edges
     print("Start architecture graph generation")
+
     start = time.time()
+
+    # Generate CGRA MRRG Graph in arch: Graph
+    # adds proprty time to PEs
     for i in range(0, t):
         for j in range(0, t):
-            #if i == j: continue
+            # if i == j: continue
             for n_i in nodes[i]:
                 for n_j in nodes[j]:
-                    if n_i == n_j and i==j: 
+                    if n_i == n_j and i == j:
                         continue
+                    # Modulo size to see always the current t nodes as a single "time" graph
+                    # Otherwise edge from PE 0 at t 0 to PE 0 and t > 1 won't be added
                     if isConnected(n_i % (size_x * size_y), n_j % (size_x * size_y), size_y, size_x):
                         arch.add_node(n_i)
                         arch.add_node(n_j)
 
                         arch.nodes[n_i]['time'] = i
                         arch.nodes[n_j]['time'] = j
-    #
+
                         arch.add_edge(n_i, n_j)
     end = time.time()
-    print("Time to generate architecture: " + str(end - start))                  
-    
-    
+    print("Time to generate architecture: " + str(end - start))
 
+    # MRRG -> arch: Graph, holds the (undirected) edges of the CGRA MRRG graph
+    saveFigDFG(dfg, schedule)
 
-    #write_dot(G1, "G1.dot")
+    # write_dot(G1, "G1.dot")
     # Convert DFG to undirected graph
     dfg = dfg.to_undirected()
-
-    print("Monomorphism search start...")
+    # Q: Wouldn't this operation break the dependencies relations? Do i even care, dont think so..?
 
     # Assign attributes to DFG nodes
-    # the attribute for every node is 
+    # the attribute for every node is
     # the time steps at which the node is scheduled
     for n in dfg.nodes:
         dfg.nodes[n]['time'] = getTime(int(n), schedule)
 
-    node_pe = {}
-    pe_nodes = {}
-    # Start monomorphism search
-    nm = isomorphism.categorical_node_match("time", [i for i in range(II)])
-    #GM = nx.isomorphism.GraphMatcher(arch, dfg)
-    GM = nx.isomorphism.GraphMatcher(arch, dfg, nm)
-    start = time.time()
-    map_id = 0
-    for m in GM.subgraph_monomorphisms_iter():
-        #print(m)
-        node_pe = {}
-        pe_nodes = {}
-        for k in m:
-            #print("Node: " + str(m[k]) + " on PE: " + str(k) + "=" + str(k % (size_x*size_y)) )
-            if k % (size_x * size_y) not in pe_nodes:
-                pe_nodes[k % (size_x * size_y)] = []
-            pe_nodes[k % (size_x * size_y)].append(m[k])
+    # Choose strategy
+    node_pe: dict[int, int] = {}
+    pe_nodes: dict[int, list[int]] = {}
+    space_search_time = 0
 
-            if m[k] not in node_pe:
-                node_pe[m[k]] = k % (size_x * size_y)
-            else:
-                print("should not happend", m[k], k,  m)
+    # node_pe -> node_pe: int -> int, holds a map from instruction to PE index, no time information
+    # pe_nodes -> pe_nodes: int -> list[int], holds all the instructions to be scheduled in each PE, no time information
 
-        
-        if map_id == 0:
-            break
-        map_id += 1
+    # Start generation of SPACE solution
+    match SSA:
+        case SpaceSearchAlgorithm.MONOMORPHISM:
+            print("Monomorphism search start...")
+            node_pe, pe_nodes, space_search_time = monomorhpicSearch(dfg, arch, II, size_x, size_y)
+            print("Time for monomorphism search: " + str(space_search_time))
+        case SpaceSearchAlgorithm.SIMULATED_ANNEALING:
+            print("Simulated annealing search start...")
+            node_pe, pe_nodes, space_search_time = simulatedAnnealingSearch(schedule, dfg, arch, II, size_x, size_y)
+            print("Time for simulated annealing search: " + str(space_search_time))
+            pass
+        case _:
+            print(f"Space Search Algorithm {SSA} is not defined")
+            exit(1)
+    
+    # print(f"\nnode_pe\n")
+    # for n in node_pe:
+    #     print(f"{n}: {node_pe[n]}")
+    # print(f"\n")
 
+    # print(f"\npe_nodes\n")
+    # for n in pe_nodes:
+    #     print(f"{n}: {pe_nodes[n]}")
+    # print(f"\n")
 
-    end = time.time()
-    total_time += (end-start)
-    print("Time for monomorphism search: " + str(end - start))
+    total_time += space_search_time
+    # end generation of SPACE solution
 
+    # Check solution
     if len(pe_nodes) == 0:
-        print("Monomorphism not found!")
+        print("Solution not found!")
         exit(0)
 
     if check_solution(pe_nodes, dfg, size_y, size_x) == False:
@@ -184,17 +265,95 @@ def map(dfg, arch, II, topology_degree, size_y, size_x):
         print()
         exit(0)
 
-
-    print("Monomorphism found!")
+    print("Solution found!")
 
     print("Final mapping")
     for i in range(0, II):
         for n in schedule[i]:
             print("Node ", n, " Mapped on PE ", node_pe[n], " at time ", i)
 
+    print("PE usage")
+
+    # total_pe_usages = 0
+    # for pe in range(len(pe_nodes)):
+    #     times = len(pe_nodes[pe])
+    #     print(f"PE {pe} used {times} times")
+    #     total_pe_usages += times
+    
+    # for pe in range(size_x * size_y):
+    #     if pe not in pe_nodes:
+    #         print(f"PE {pe} is unused")
+
+    # print(f"Out of all used PEs on average a PE is used {total_pe_usages / len(pe_nodes)} times")
+    # print(f"Out of all PEs on average a PE is used {total_pe_usages / (size_x * size_y)} times")
+
+    saveFigMappingsCGRA(node_pe, schedule, size_x, size_y)
+
     print("Total time:", total_time)
 
-def getTime(node, schedule):
+
+def monomorhpicSearch(dfg: DiGraph, arch: Graph, II: int, size_x: int, size_y: int) -> tuple[dict[int, int], dict[int, list[int]], float]:
+    node_pe: dict[int, int] = {}
+    pe_nodes:  dict[int, list[int]] = {}
+
+    # Start monomorphism search
+    # Returns a comparison function for a categorical node attribute: x.get("time", default)
+    nm: function = isomorphism.categorical_node_match("time", [i for i in range(II)])
+
+    # Class (GraphMatcher) that is responsible for matching graphs or directed graphs
+    # in a predetermined manner.
+    # GM = nx.isomorphism.GraphMatcher(arch, dfg)
+    GM = nx.isomorphism.GraphMatcher(arch, dfg, nm)
+
+    start = time.time()
+    map_id = 0
+    # subgraph_monomorphisms_iter given: MRRG (arch) and DFG (dfg) and function used for matching (nm)
+    # which in this case matches over the time of each node, computes all monomorphic subraphs, i.e.
+    # all graphs that given the dfg, can be made by placing such dfg nodes into arch nodes and have a valid
+    # dfg graph representation will be returned by the subgraph_monomorphisms_iter function
+    for m in GM.subgraph_monomorphisms_iter():
+        # m is of type Generator, a "generated" graph.
+        # it is a dict retruned in the form PE index -> Operation index
+        # print(m)
+
+        node_pe = {}
+        pe_nodes = {}
+        for k in m:
+            # print("Node: " + str(m[k]) + " on PE: " + str(k) + "=" + str(k % (size_x*size_y)) )
+            if k % (size_x * size_y) not in pe_nodes:
+                pe_nodes[k % (size_x * size_y)] = []
+            pe_nodes[k % (size_x * size_y)].append(m[k])
+
+            if m[k] not in node_pe:
+                node_pe[m[k]] = k % (size_x * size_y)
+            else:
+                # Mapping instruction twice to a PE
+                print("should not happend", m[k], k,  m)
+
+        if map_id == 0:
+            break
+        map_id += 1
+
+    end = time.time()
+    return (node_pe, pe_nodes, end - start)
+
+
+def getTime(node: int, schedule: dict[str, list[int]]) -> int:
+    """
+    Computes and returns the time of index node `node` and schedule `schedule`.
+
+    The function assumes that index `node` is found within the list of nodes in the schedule at any time.
+
+    Args:
+        node (int): The index of the node to be found in `schedule`
+        schedule (dict[str, list[int]]): The schedule of all nodes, maps time -> list of nodes indexes
+    
+    Exit:
+        Exits if the scheduilng time of a node is not found
+
+    Returns:
+        int: The time at which the node is to be scheduled
+    """
     for i in schedule:
         if node in schedule[i]:
             return i
@@ -202,36 +361,50 @@ def getTime(node, schedule):
     print("Error while getting scheduling time of node")
     exit(0)
 
-def isConnected(pe1, pe2, size_y, size_x):
 
-        
-        i1 = pe1 // size_y
-        j1 = pe1 % size_y
+def isConnected(pe1: int, pe2: int, size_y: int, size_x: int) -> bool:
+    """
+    Returns true if `pe1` is conntected to `pe2` for a CGRA of size `size_x * size_y`, otherwise it returns false.
 
-        i2 = pe2 // size_y
-        j2 = pe2 % size_y
+    Assumes that PEs connections happear only between adjacent PEs, where edge PEs wrap around.
 
-        #same row
-        if i1 == i2:
-            if (pe1 == pe2 + 1) or (pe1 == pe2 - 1):
-                return True
-            if abs(pe1 - pe2) == size_y - 1:
-                return True
+    Args:
+        pe1 (int): First PE
+        pe2 (int): Second PE
+        size_y (int): Number of PEs rows
+        size_x (int): Number of PEs columns
 
-        #same col
-        if j1 == j2:
-            if (pe1 == pe2 + size_y) or (pe1 == pe2 - size_y):
-                return True
-            if abs(i1 - i2) == size_x - 1:
-                return True
-        #center
-        if pe1 == pe2:
+    Returns:
+        bool: True if `pe1` is conntected to `pe2`, otherwise false
+    """
+    i1 = pe1 // size_y
+    j1 = pe1 % size_y
+
+    i2 = pe2 // size_y
+    j2 = pe2 % size_y
+
+    # same row
+    if i1 == i2:
+        if (pe1 == pe2 + 1) or (pe1 == pe2 - 1):
+            return True
+        if abs(pe1 - pe2) == size_y - 1:
             return True
 
-        return False
+    # same col
+    if j1 == j2:
+        if (pe1 == pe2 + size_y) or (pe1 == pe2 - size_y):
+            return True
+        if abs(i1 - i2) == size_x - 1:
+            return True
+
+    # center
+    if pe1 == pe2:
+        return True
+
+    return False
 
 
-def get_back_edges(graph):    
+def get_back_edges(graph):
     back_edges = []
     edge_attributes = nx.get_edge_attributes(graph, "type")
     for e in edge_attributes:
@@ -239,45 +412,47 @@ def get_back_edges(graph):
             back_edges.append(e)
     return back_edges
 
-def asap_schedule(graph, mode = 1):
+
+def asap_schedule(graph, mode=1):
 
     # Remove loop carried dependencies before computing the schedule
     back_edges = get_back_edges(graph)
     for e in back_edges:
         graph.remove_edge(e[0], e[1])
 
-
     # Check if the graph is a DAG
     if not nx.is_directed_acyclic_graph(graph):
-        raise ValueError("The input graph must be a Directed Acyclic Graph (DAG)")
-    
+        raise ValueError(
+            "The input graph must be a Directed Acyclic Graph (DAG)")
+
     # Topological sorting of the graph
     topo_order = list(nx.topological_sort(graph))
-    
+
     # Initialize the schedule dictionary with start times
     asap_times = {node: 0 for node in topo_order}
-    
+
     # Calculate the ASAP times
     for node in topo_order:
         for pred in graph.predecessors(node):
             asap_times[node] = max(asap_times[node], asap_times[pred] + 1)
-    
+
     # Organize nodes by their ASAP times
     schedule = defaultdict(list)
     for node, time in asap_times.items():
         schedule[time].append(node)
-    
-    # Restore loop carried dependencies 
+
+    # Restore loop carried dependencies
     for e in back_edges:
-        graph.add_edge(e[0], e[1], type = "back_dep")
-    #print("ASAP Schedule len", len(schedule))
+        graph.add_edge(e[0], e[1], type="back_dep")
+    # print("ASAP Schedule len", len(schedule))
     if mode == 1:
         return dict(schedule)
     elif mode == 0:
         return asap_times
-  
-def alap_schedule(graph, mode = 1):
-     
+
+
+def alap_schedule(graph, mode=1):
+
     # Remove loop carried dependencies before computing the schedule
     back_edges = get_back_edges(graph)
     for e in back_edges:
@@ -285,44 +460,44 @@ def alap_schedule(graph, mode = 1):
 
     # Check if the graph is a DAG
     if not nx.is_directed_acyclic_graph(graph):
-        raise ValueError("The input graph must be a Directed Acyclic Graph (DAG)")
-    
+        raise ValueError(
+            "The input graph must be a Directed Acyclic Graph (DAG)")
+
     # Topological sorting of the graph in reverse order
     reverse_topo_order = list(nx.topological_sort(graph))[::-1]
-    
+
     # Find the maximum depth of the graph
     max_depth = len(asap_schedule(graph)) - 1
-    #max_depth = len(nx.dag_longest_path(graph))
+    # max_depth = len(nx.dag_longest_path(graph))
 
     # Initialize the schedule dictionary with latest start times
     alap_times = {node: max_depth for node in reverse_topo_order}
-    
+
     # Calculate the ALAP times
     for node in reverse_topo_order:
         for succ in graph.successors(node):
             alap_times[node] = min(alap_times[node], alap_times[succ] - 1)
-    
+
     # Organize nodes by their ALAP times
     schedule = defaultdict(list)
     for node, time in alap_times.items():
         schedule[time].append(node)
-    
 
-    # Restore loop carried dependencies 
+    # Restore loop carried dependencies
     for e in back_edges:
-        graph.add_edge(e[0], e[1], type = "back_dep")
-
+        graph.add_edge(e[0], e[1], type="back_dep")
 
     if mode == 1:
         return dict(schedule)
     elif mode == 0:
         return alap_times
 
+
 def mobility_schedule(graph):
 
     MS = {}
-    asap_times = asap_schedule(graph, mode = 0)
-    alap_times = alap_schedule(graph, mode = 0)
+    asap_times = asap_schedule(graph, mode=0)
+    alap_times = alap_schedule(graph, mode=0)
 
     for n in graph.nodes:
         t_asap = asap_times[n]
@@ -335,22 +510,22 @@ def mobility_schedule(graph):
 
     return MS
 
+
 def kernel_mobility_schedule(graph, II):
     KMS = {}
     MS = mobility_schedule(graph)
     scheduleLen = len(MS) - 1
 
-
     if II <= scheduleLen + 1:
         for i in range(0, scheduleLen + 1):
             it = i//II
-            
-            if (i%II) not in KMS:
-                KMS[i%II] = []
+
+            if (i % II) not in KMS:
+                KMS[i % II] = []
             for nid in MS[i]:
-                KMS[i%II].append((it, nid))
+                KMS[i % II].append((it, nid))
     else:
-        
+
         dup = II - (scheduleLen + 1)
         it = 0
         tmpKMS = {}
@@ -363,40 +538,41 @@ def kernel_mobility_schedule(graph, II):
                         tmpKMS[i + d].append(nid)
 
             d += 1
-            
+
         for t in tmpKMS:
             if t not in KMS:
                 KMS[t] = []
             for nid in tmpKMS[t]:
                 KMS[t].append((it, nid))
 
-    #for t in KMS:
+    # for t in KMS:
     #    print(t, KMS[t])
     return KMS
 
-def generate_valid_schdule(graph, II, array_size, topology_degree):
 
-    #s = Solver()
+def generate_valid_schdule(graph: Graph, II: int, array_size: int, topology_degree: int) -> dict[str, list[int]]:
+
+    # s = Solver()
     back_edges = get_back_edges(graph)
     schedule_result = {}
     valid_schedule = False
-    
-    while(not valid_schedule):
+
+    while (not valid_schedule):
         s = Solver()
-        #print("Scheduling solver timeout set")
-        #s.set("timeout", 5*1000) # seconds * 1000
+        # print("Scheduling solver timeout set")
+        # s.set("timeout", 5*1000) # seconds * 1000
         print("Scheduling II =", II)
         start = time.time()
         KMS = kernel_mobility_schedule(graph, II)
-        #for i in range(II):
+        # for i in range(II):
         #   print(i, KMS[i])
-        #for n in graph:
+        # for n in graph:
         #    print("Node", n, "has mobility", getMobilityValue(KMS,n))
         #    for succ in list(graph.successors(n)):
         #        print("\tSuccessor", succ, "has mobility", getMobilityValue(KMS, succ))
 
         fully_encoded = True
-        #print(KMS)
+        # print(KMS)
         # Generate variables
         iterations = {}
         nit = math.ceil((len(mobility_schedule(graph))) / II)
@@ -410,12 +586,12 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
                     if p[0] == it:
                         iterations[it][t].append(p[1])
 
-
         literals = []
         for it in iterations:
             for c in iterations[it]:
-                for NodeId in iterations[it][c]:                
-                    literals.append((Bool("v_%s_%s_%s" % (str(NodeId),str(c),str(it))), NodeId, c, it))
+                for NodeId in iterations[it][c]:
+                    literals.append(
+                        (Bool("v_%s_%s_%s" % (str(NodeId), str(c), str(it))), NodeId, c, it))
 
         c_n_it_literal = {}
         n_c_it_literal = {}
@@ -437,7 +613,7 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
 
             if nodeid not in n_c_it_literal:
                 n_c_it_literal[nodeid] = {}
-            
+
             if cycle not in n_c_it_literal[nodeid]:
                 n_c_it_literal[nodeid][cycle] = {}
 
@@ -446,16 +622,15 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
 
             if cycle not in c_n_it_literal:
                 c_n_it_literal[cycle] = {}
-            
 
             if nodeid not in c_n_it_literal[cycle]:
                 c_n_it_literal[cycle][nodeid] = {}
-            
+
             if iteration not in c_n_it_literal[cycle][nodeid]:
                 c_n_it_literal[cycle][nodeid][iteration] = {}
-                
+
             c_n_it_literal[cycle][nodeid][iteration] = literal
-        
+
         # Start encoding scheduling constraints
         for e in graph.edges:
             if e in back_edges:
@@ -464,48 +639,53 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
             source = e[0]
             destination = e[1]
 
-            #print(source, destination)
+            # print(source, destination)
             tmp = []
             for (cs, cd) in itertools.product(c_n_it_literal, c_n_it_literal):
                 if (source not in c_n_it_literal[cs]) or (destination not in c_n_it_literal[cd]):
                     continue
-                
+
                 for (it1, it2) in itertools.product(c_n_it_literal[cs][source], c_n_it_literal[cd][destination]):
                     if it1 == it2 and cd > cs:
-                        tmp.append(And(c_n_it_literal[cs][source][it1], c_n_it_literal[cd][destination][it2]))
+                        tmp.append(
+                            And(c_n_it_literal[cs][source][it1], c_n_it_literal[cd][destination][it2]))
                     elif abs(it1 - it2) == 1 and it1 < it2 and cd <= cs:
-                        tmp.append(And(c_n_it_literal[cs][source][it1], c_n_it_literal[cd][destination][it2]))
-                    
-            if len(tmp) == 0: 
+                        tmp.append(
+                            And(c_n_it_literal[cs][source][it1], c_n_it_literal[cd][destination][it2]))
+
+            if len(tmp) == 0:
                 print("Not all constraints encoded. II is too small")
                 fully_encoded = False
                 break
             s.add(Or(tmp))
-        #back dep
+        # back dep
         for e in graph.edges:
             if e not in back_edges:
                 continue
-            
+
             source = e[0]
             destination = e[1]
 
-            #print(source, destination)
+            # print(source, destination)
             tmp = []
             for (cs, cd) in itertools.product(c_n_it_literal, c_n_it_literal):
                 if (source not in c_n_it_literal[cs]) or (destination not in c_n_it_literal[cd]):
                     continue
-                
+
                 for (it1, it2) in itertools.product(c_n_it_literal[cs][source], c_n_it_literal[cd][destination]):
                     if abs(it1 - it2) > 1:
                         continue
                     if it1 == it2 and cs > cd:
-                        tmp.append(And(c_n_it_literal[cs][source][it1], c_n_it_literal[cd][destination][it2]))
+                        tmp.append(
+                            And(c_n_it_literal[cs][source][it1], c_n_it_literal[cd][destination][it2]))
                     elif it1 > it2 and cs < cd:
-                        tmp.append(And(c_n_it_literal[cs][source][it1], c_n_it_literal[cd][destination][it2]))
+                        tmp.append(
+                            And(c_n_it_literal[cs][source][it1], c_n_it_literal[cd][destination][it2]))
                     elif it1 == it2 and cs == cd:
-                        tmp.append(And(c_n_it_literal[cs][source][it1], c_n_it_literal[cd][destination][it2]))
-                    
-            if len(tmp) == 0: 
+                        tmp.append(
+                            And(c_n_it_literal[cs][source][it1], c_n_it_literal[cd][destination][it2]))
+
+            if len(tmp) == 0:
                 print("Not all constraints encoded")
                 fully_encoded = False
                 break
@@ -523,9 +703,10 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
             tmp = []
             for i in range(len(node_literals[nodeid])-1):
                 for j in range(i+1, len(node_literals[nodeid])):
-                    tmp.append(Not(And(node_literals[nodeid][i], node_literals[nodeid][j])))
+                    tmp.append(
+                        Not(And(node_literals[nodeid][i], node_literals[nodeid][j])))
             tmp = And(tmp)
-            exactlyone = And(phi,tmp)
+            exactlyone = And(phi, tmp)
             s.add(exactlyone)
 
         # Capacity constraints
@@ -551,71 +732,66 @@ def generate_valid_schdule(graph, II, array_size, topology_degree):
         for n in graph:
             if getMobilityValue(KMS, n) == 1:
                 s.add(node_literals[n])
-                #print("Has mobility 1", n, node_literals[n])
-            #print("Node", n, "has mobility", getMobilityValue(KMS,n))
-            #for succ in list(graph.successors(n)):
+                # print("Has mobility 1", n, node_literals[n])
+            # print("Node", n, "has mobility", getMobilityValue(KMS,n))
+            # for succ in list(graph.successors(n)):
             #    print("\tSuccessor", succ, "has mobility", getMobilityValue(KMS, succ))
-            
 
-        
-        
         end = time.time()
         print("Time to generate constraints: " + str(end - start))
 
         print("Start solving...")
         start = time.time()
-        
-        #with open("Schedule_II_"+str(II), "w") as f:
+
+        # with open("Schedule_II_"+str(II), "w") as f:
         #    f.write(s.to_smt2())
 
-
         if s.check() == sat:
-            #print("SAT")
+            # print("SAT")
             m = s.model()
             model_number = 0
             while s.check() == sat:
-                
+
                 print("MODEL " + str(model_number))
-                model_number+=1
+                model_number += 1
                 m = s.model()
-                block = []  
-                for z3_decl in m: # FuncDeclRef
+                block = []
+                for z3_decl in m:  # FuncDeclRef
                     arg_domains = []
                     for i in range(z3_decl.arity()):
                         domain, arg_domain = z3_decl.domain(i), []
                         for j in range(domain.num_constructors()):
-                            arg_domain.append( domain.constructor(j) () )
+                            arg_domain.append(domain.constructor(j)())
                         arg_domains.append(arg_domain)
                     for args in itertools.product(*arg_domains):
                         block.append(z3_decl(*args) != m.eval(z3_decl(*args)))
                 s.add(Or(block))
-                if model_number == 4:#4
+                if model_number == 4:  # 4
                     break
-            
+
             valid_schedule = True
-            #print(m)
+            # print(m)
             for t in m.decls():
-                #print(t, m[t])
+                # print(t, m[t])
                 if is_true(m[t]):
                     tmp = str(t).split('_')
                     nodeid = int(tmp[1])
                     cycle = int(tmp[2])
                     iteration = int(tmp[3])
-                        #
+                    #
                     if cycle not in schedule_result:
                         schedule_result[cycle] = []
                     schedule_result[cycle].append(nodeid)
         else:
-            print("UNSAT")   
+            print("UNSAT")
         end = time.time()
         print("Time to find schedule: " + str(end - start))
         II += 1
 
-
     return schedule_result
 
+
 def check_placement_feasibility(source, it_source, cycle_source, iterations_tuple, cycles_tuple, successors, back_edges, topology_degree):
-    
 
     # Discard tuple if the distance between the source node iteration and
     # the destination node iteration is greater then 1
@@ -625,10 +801,10 @@ def check_placement_feasibility(source, it_source, cycle_source, iterations_tupl
 
     # Evaluate topology degree
     top_deg = {i: cycles_tuple.count(i) for i in cycles_tuple}
-    #print(cycles_tuple)
+    # print(cycles_tuple)
     for k in top_deg:
         if top_deg[k] > topology_degree:
-            return False        
+            return False
 
     # Modulo scheduling feasibility constraints - check SAT paper for more info
     for (it_t, c_t, destination) in zip(iterations_tuple, cycles_tuple, successors):
@@ -652,21 +828,26 @@ def check_placement_feasibility(source, it_source, cycle_source, iterations_tupl
 
 
 def main():
-
     parser = argparse.ArgumentParser(description='Optional app description')
-    parser.add_argument('-path', type=str, help='Input file containing the DFG')
-    parser.add_argument('-x', type=int, help='Number or rows in the CGRA (default value: 4)', default=4)
-    parser.add_argument('-y', type=int, help='Number or rows in the CGRA (default value: 4)', default=4)
-    parser.add_argument('-d', type=int, help='Topology degree (default value: 5)', default=5)
-    parser.add_argument('-i', type=int, help='Iteration Itnerval (default value: -1)', default=-1)
-    
+    parser.add_argument('-path', type=str,
+                        help='Input file containing the DFG')
+    parser.add_argument(
+        '-x', type=int, help='Number or rows in the CGRA (default value: 4)', default=4)
+    parser.add_argument(
+        '-y', type=int, help='Number or columns in the CGRA (default value: 4)', default=4)
+    parser.add_argument(
+        '-d', type=int, help='Topology degree (default value: 5)', default=5)
+    parser.add_argument(
+        '-i', type=int, help='Iteration Itnerval (default value: -1)', default=-1)
+    parser.add_argument(
+        '-s', type=int, help='Space Search Algorithm (Monomorphism: 0 (default), Simulated Annealing: 1)', default=0)
 
-    #Parse Arguments
+    # Parse Arguments
     args = parser.parse_args()
 
     edgefile = args.path
 
-    #thread_timeout = int(args.t)
+    # thread_timeout = int(args.t)
 
     CGRA_X = int(args.x)
     CGRA_Y = int(args.y)
@@ -674,17 +855,17 @@ def main():
     CGRA_SIZE = CGRA_X * CGRA_Y
     print(CGRA_SIZE, "CGRA size")
     arch = nx.Graph()
-    dfg  = nx.DiGraph()
+    dfg = nx.DiGraph()
 
     topology_degree = int(args.d)
 
+    SPACE_SEARCH_ALGORITHM = SpaceSearchAlgorithm(args.s)
 
     print(edgefile)
     print(CGRA_X, "x", CGRA_Y)
 
-
     # Parse input DFG
-    with open(edgefile,"r") as fd: 
+    with open(edgefile, "r") as fd:
         for l in fd.read().splitlines():
             edge = [int(x) for x in l.split(' ')]
             if edge[2] == 1:
@@ -692,45 +873,41 @@ def main():
             else:
                 dfg.add_edge(edge[0], edge[1], type="data_dep")
     print("Parsing done!")
-    #dfg = G
-    
+
     # Get starting II
     print("NOTE: The architecture time is not included in the final compilation time.")
     RecII = 1
     ResII = math.ceil(len(dfg.nodes) / CGRA_SIZE)
     for ec in nx.recursive_simple_cycles(dfg):
         RecII = max(RecII, len(ec))
-        #print("EC",ec)
+        # print("EC",ec)
     print("RecII is computed with recursive_simple_cycles from networkX.\nSometimes it doesn't provide the correct lowerbound.\nTo manually set the II , use the -i option.")
     # Should be max(recII, resII), but there is a bug in some cases.
     # SAT-MapIt computes the correct lowerbound
     # Only looking at the length of the recursive simple cycle
-    # of the DFG is not correct 
+    # of the DFG is not correct
 
     II = max(RecII, ResII)
-    print("II = max(RecII, ResII) = max(" + str(RecII) + ", " + str(ResII) + ")= " + str(II))
-    print("#nodes: ",len(dfg.nodes))
-    print("#edges: ",len(dfg.edges))
+    print("II = max(RecII, ResII) = max(" + str(RecII) +
+          ", " + str(ResII) + ")= " + str(II))
+    print("#nodes: ", len(dfg.nodes))
+    print("#edges: ", len(dfg.edges))
     print("#maxdegree: ", getMaxOutDegree(dfg))
     if int(args.i) != -1:
         II = int(args.i)
         print("Manually setting II to", II)
 
-    if(topology_degree > computeTopologyDegree(CGRA_Y, CGRA_X)):
+    if (topology_degree > computeTopologyDegree(CGRA_Y, CGRA_X)):
         print("Topology check failed!")
         print("Invalid degree for 2D-mesh topology!")
-        print("Expected ", computeTopologyDegree(CGRA_Y, CGRA_X), "Got ", topology_degree)
+        print("Expected ", computeTopologyDegree(
+            CGRA_Y, CGRA_X), "Got ", topology_degree)
         print("Remove this check if you defined your own topology by modifying the function isConnected")
         exit(0)
-        
-    map(dfg, arch, II, topology_degree, CGRA_Y, CGRA_X)
+    print("topology: ", topology_degree)
 
-    
-
+    map(dfg, arch, II, topology_degree, CGRA_Y, CGRA_X, SPACE_SEARCH_ALGORITHM)
 
 
 if __name__ == "__main__":
     main()
-
-
-

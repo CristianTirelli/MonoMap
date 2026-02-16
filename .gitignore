@@ -1,0 +1,12 @@
+# python
+mono-compiler
+__pycache__
+
+# macos
+.DS_Store
+
+# related script output
+acc*
+*.png
+cgra-mono-code-acc*
+extracted.ll
