@@ -1,41 +1,259 @@
 #!/bin/sh -eu
 
+# One of -f or -p is necessary
+# -f  [file_path] compiles the C script with pragma annotations to run monomap on it
+# -p  [file_path] uses the file as DFG edges to run monomap on it
+
+# -d  [number] sets the topology edges (defaults to 5)
+# -x  [number] sets the CGRA x size (defaults to 4)
+# -y  [number] sets the CGRA y size (defaults to 4)
+# -i  [number] sets the II for the schedule (defaults to -1, which is then calculated by the python script)
+
+# -s  [0 | 1] selects the space algorithm (0: monomorphism - default, 1: simulated annealing)
+# -b  collects the benchmark result
+# -t  sets the times the algorithm is run when collecting a benchmark (defaults to 10)
+
+# -a  runs automatically benchmarks for all sizes 2x2, 5x5, 10x10 and 20x20 of all algorithms
+#     found in benchmarks/extra/**/[**]/kernel1_edges
+
+# -j algoname-Xx   flag available only if autmating (-a), it skips benchmarks until it finds the one
+#                 of algoname at size XX
+
+F=""
+P=""
+
 X=4
 Y=4
 D=5
 II=-1
 S=0
-while getopts "f:x:y:d:i:s:" opt; do
+T=2
+B=0
+A=0
+
+A_SEARCH_NAME=""
+JUMP_TO=""
+
+# might be better to filter arguments better by allowing multiple characters flags
+# also to align flags with monomap.py
+while getopts "f:p:x:y:d:i:s:t:ban:j:" opt; do
   case $opt in
     f) F=$OPTARG ;;
+    p) P=$OPTARG ;;
     x) X=$OPTARG ;;
     y) Y=$OPTARG ;;
     d) D=$OPTARG ;;
     i) II=$OPTARG ;;
     s) S=$OPTARG ;;
+    t) T=$OPTARG ;;
+    b) B=1 ;;
+    a) A=1 ;;
+    n) A_SEARCH_NAME=$OPTARG ;;
+    j) JUMP_TO=$OPTARG ;;
     \?) echo "Invalid option -$OPTARG" >&2; exit 1 ;;
   esac
 done
-echo "$X"
-echo "$Y"
+
+echo "$X"x"$Y"
+
+# if we are in a 2x2 change topology degree to 3
+if [ "$X" -eq 2 ] && [ "$Y" -eq 2 ]; then
+  D=3
+fi
+
+# input checks -n is non-zero?, -z is empty?
+if [ -n "$F" ] && [ -n "$P" ]; then
+	echo "Either compile the algorithm using \"-f\" or select an already compiled one through \"-p\""
+	exit 1
+elif [ -z "$F" ] && [ -z "$P" ] && [ "$A" -eq 0 ]; then
+	echo "One of \"-f\" or \"-p\" or \"-a\" is needed"
+	exit 1
+fi
 
 ADD_FLAGS=""
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    echo "Running on macOS"
-    ADD_FLAGS+="-isysroot $(xcrun --show-sdk-path)"
+  echo "Running on macOS"
+  ADD_FLAGS+="-isysroot $(xcrun --show-sdk-path)"
 else
-    echo "Running on Linux/Other"
+  echo "Running on Linux/Other"
 fi
 
-./llvm-project/build/bin/clang -O3 -fno-unroll-loops -fno-vectorize -fno-slp-vectorize -S -emit-llvm $ADD_FLAGS -o extracted.ll "$F"
+run_benchmark() {
+  local algorithm_name="$1"
+  local location="$2"
 
-./llvm-project/build/bin/opt -disable-output extracted.ll -passes=cgra-extract
+  local x="$3"
+  local y="$4"
+  local d="$5"
+  local ii="$6"
+  local s="$7"
 
-for folder in acc*; do
-    if [ -d "$folder" ]; then
-    python3 mapper/monomap.py -path "$folder"/acc_edges -x "$X" -y "$Y" -d "$D" -i "$II" -s "$S" > cgra-mono-code-"$folder"
+  local benchmark="$8"
+  local automated="$9"
+
+  # 10 and not ${1}0
+  local folder_instead_of_file_path="${10}"
+
+  local jumping_to_size="${11}"
+
+  if [ "$benchmark" -eq 1 ] && [ "$s" -eq 0 ]; then
+    echo "Benchmark is defined only for simulated annealing space search, use: -s 1"
+    exit 1
+  fi
+
+  if [ "$automated" -eq 1 ]; then
+    if [  -z "$A_SEARCH_NAME" ]; then
+      echo "Automated needs an search algorithm name to always benchmark with"
+      exit 1
     fi
-done
 
+    # jump is of type algoname-size, we automatically skip until we reach such combination
+    # here we handle size, that is passed in by jumping_to_size
+    JUMPING=0
+    if [ "$jumping_to_size" -ne 0 ]; then
+      JUMPING=1
+    fi
+
+    # for automated we make it run 10 times with different sizes:
+    for size in 2 5 10 20; do
+      if [[ "$JUMPING" -eq 1 && "$jumping_to_size" -ne "$size" ]]; then
+        continue
+      else
+        JUMPING=0
+      fi
+
+      # adjust inputs
+      if [ "$size" -eq 2 ]; then
+        d=3
+      elif [ "$size" -eq 5 ]; then
+        d=5
+      fi
+
+      for ((i = 1; i <= T; i++)); do
+        echo ""$A_SEARCH_NAME" Benchmark of $algorithm_name in folder $location iteration $i/$T for size "$size"x"$size""
+        python3 -u mapper/monomap.py -path "$location/kernel1_edges" -x "$size" -y "$size" -d "$d" -i "$ii" -s "$s" -b "$algorithm_name" -a -an "$A_SEARCH_NAME" > "cgra-mono-code-a-$A_SEARCH_NAME"
+      done
+    done
+  elif [ "$benchmark" -eq 1 ]; then
+    if [ "$folder_instead_of_file_path" -eq 1 ]; then
+      for ((i = 1; i <= T; i++)); do
+        echo "Benchmark of $algorithm_name in folder $location iteration $i/$T"
+        python3 -u mapper/monomap.py -path "$location/kernel1_edges" -x "$x" -y "$y" -d "$d" -i "$ii" -s "$s" -b "$algorithm_name" > "cgra-mono-code-$algorithm_name"
+      done
+    else
+      for ((i = 1; i <= T; i++)); do
+        # path is a complete file path
+        echo "Benchmark of $algorithm_name found at $location iteration $i/$T"
+        python3 -u mapper/monomap.py -path "$location" -x "$x" -y "$y" -d "$d" -i "$ii" -s "$s" -b "$algorithm_name" > "cgra-mono-code-$algorithm_name"
+      done
+    fi
+  else
+    # only single run can have path instead of folder
+    if [ "$folder_instead_of_file_path" -eq 1 ]; then
+      # path is a folder where kernel1_edges file (dfg edges graph) is found
+      echo "Running $algorithm_name in folder $location"
+      python3 -u mapper/monomap.py -path "$location/kernel1_edges" -x "$x" -y "$y" -d "$d" -i "$ii" -s "$s" > "cgra-mono-code-$algorithm_name"
+    else
+      # path is a complete file path
+      echo "Running $algorithm_name found at $location"
+      python3 -u mapper/monomap.py -path "$location" -x "$x" -y "$y" -d "$d" -i "$ii" -s "$s" > "cgra-mono-code-$algorithm_name"
+    fi
+  fi
+}
+
+# if -a we run automatically benchmarks from /benchmarks/extra
+if [ "$A" -eq 1 ]; then
+  path="./benchmarks/extra"
+  echo "Starting automatic benchmark for compiled algorithms in "$path""
+
+  # jump is of type algoname-size, we automatically skip until we reach such combination
+  # here we handle algoname
+  JUMPING=0
+  JUMP_TO_NAME=""
+  JUMP_TO_SIZE=0
+  if [ -n "$JUMP_TO" ]; then
+    JUMPING=1
+    # parse name
+    JUMP_TO_NAME="${JUMP_TO%-*}"
+    JUMP_TO_SIZE="${JUMP_TO##*-}"
+
+    if [[
+      "$JUMP_TO_SIZE" -ne 2 &&
+      "$JUMP_TO_SIZE" -ne 5 &&
+      "$JUMP_TO_SIZE" -ne 10 &&
+      "$JUMP_TO_SIZE" -ne 20 ]]; then
+      echo "Jump to size: "$JUMP_TO_SIZE" is not a recognizable size"
+      exit 1
+    fi
+  fi
+
+  for folder in "$path"/*; do
+    if [ -d "$folder" ]; then
+      # run kernel edges if found
+      # s == 1 as benchmark is defined only to SA
+      if [ -f "$folder/kernel1_edges" ]; then
+        # if kernel1_edges is found execute
+        algorithm_name=$(basename "$folder")
+
+        # try to skip algo until the one to jump to is found
+        if [[ "$JUMPING" -eq 1 && "$JUMP_TO_NAME" != "$algorithm_name" ]]; then
+          continue
+        else
+          JUMPING=0
+        fi
+
+        run_benchmark "$algorithm_name" "$folder" "$X" "$Y" "$D" "$II" 1 0 1 0 "$JUMP_TO_SIZE"
+      else
+        # check for folders of folders (sha case)
+        for subfolder in "$folder"/*; do
+          # if folder has kernel edges we execute it
+          if [ -d "$subfolder" ] && [ -f "$subfolder/kernel1_edges" ]; then
+            algorithm_name=$(basename "$subfolder")
+
+            # try to skip algo until the one to jump to is found
+            if [[ "$JUMPING" -eq 1 && "$JUMP_TO_NAME" != "$algorithm_name" ]]; then
+              continue
+            else
+              JUMPING=0
+            fi
+
+            run_benchmark "$algorithm_name" "$subfolder" "$X" "$Y" "$D" "$II" 1 0 1 0 "$JUMP_TO_SIZE"
+          fi
+        done
+
+        # we need to continue if we were in subfolder and still haven't found
+        # the algo to be skipped
+        if [[ "$JUMPING" -eq 1 ]]; then
+          continue
+        fi
+      fi
+    fi
+
+    # if we are skipping we never reach this point
+    # as soon we we stop on we don't skip we reach it
+    # we can safely set skip size to zero (no skipping)
+    JUMP_TO_SIZE=0
+  done
+# if -f we need to compile
+elif [ -n "$F" ]; then
+  echo "Compiling "$F""
+	./llvm-project/build/bin/clang -O3 -fno-unroll-loops -fno-vectorize -fno-slp-vectorize -S -emit-llvm $ADD_FLAGS -o extracted.ll "$F"
+	./llvm-project/build/bin/opt -disable-output extracted.ll -passes=cgra-extract
+  echo ""$F" compiled correctly"
+
+	algorithm_name=$(basename $(dirname $F))
+  for folder in acc*; do
+    if [ -d "$folder" ]; then
+      run_benchmark "$algorithm_name" "$folder" "$X" "$Y" "$D" "$II" "$S" "$B" 0 1 0
+    fi
+  done
+else
+# else we have a path -p for a compiled file
+	# gets last folder's path name
+	algorithm_name=$(basename $(dirname $P))
+  run_benchmark "$algorithm_name" "$P" "$X" "$Y" "$D" "$II" "$S" "$B" 0 0 0
+fi
+
+# Remove artifacts
 #rm -r acc*
 #rm extracted.ll

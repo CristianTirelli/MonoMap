@@ -8,5 +8,11 @@ __pycache__
 # related script output
 acc*
 *.png
-cgra-mono-code-acc*
+cgra-mono-code-*
 extracted.ll
+
+# extra benchmarks
+extra/
+
+# benchmarks results
+benchmarks-results/

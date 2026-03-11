@@ -1,10 +1,12 @@
+from pathlib import Path
 
 import networkx as nx
 from networkx.classes.digraph import DiGraph
 
 import matplotlib.pyplot as plt
+from matplotlib import rc
 
-def saveFigMappingsCGRA(node_pe: dict[int, int], schedule: dict[str, list[int]], size_x: int, size_y: int):
+def saveFigMappingsCGRA(node_pe: dict[int, int], schedule: dict[str, list[int]], size_x: int, size_y: int, save_to_directory: str = None, algorithm_name: str = None, id: str = None):
     II = len(schedule)
 
     # pos defines positions of nodes as dict: index -> [pos_x, pos_y]
@@ -65,11 +67,23 @@ def saveFigMappingsCGRA(node_pe: dict[int, int], schedule: dict[str, list[int]],
     nx.draw_networkx_labels(CGRA, pos, labels=dict(zip(used_pe, label_pe)), font_size=FONT_SIZE)
     
     nx.draw_networkx_edges(CGRA, pos, arrows=False)
-    plt.savefig('mappings-CGRA.png')
+
+    file_path: str = 'mappings-CGRA.png'
+    if save_to_directory:
+        if not algorithm_name or not id:
+            raise AssertionError("If path is specified image_id must be specified too")
+        
+        # make location path if not present
+        location = Path(save_to_directory)
+        location.mkdir(parents=True, exist_ok=True)
+        file_path = str(location / f'{algorithm_name}-mappings-CGRA-{id}.png')
+
+    plt.savefig(file_path)
     plt.close()
+    return file_path
 
 
-def saveFigDFG(dfg: DiGraph, schedule: dict[str, list[int]]):
+def saveFigDFG(dfg: DiGraph, schedule: dict[str, list[int]], save_to_directory: str = None):
     """
     It plots the DFG following the schedule structure
     
@@ -110,26 +124,68 @@ def saveFigDFG(dfg: DiGraph, schedule: dict[str, list[int]]):
     nx.draw_networkx_labels(dfg, pos)
     nx.draw_networkx_edges(dfg, pos, edgelist=red_edges, edge_color='r', arrows=True)
     nx.draw_networkx_edges(dfg, pos, edgelist=black_edges, arrows=True)
-    plt.savefig('dfg.png')
+
+    file_path = 'dfg.png'
+    if save_to_directory:
+        # here we override too since never changes
+        # make location path if not present
+        location = Path(save_to_directory)
+        location.mkdir(parents=True, exist_ok=True)
+        file_path = str(location / 'dfg.png')
+
+    plt.savefig(file_path)
     plt.close()
 
 
-def saveFigTemperature(temperatures: list[int], costs: list[int]):
-    plt.figure(figsize=[50, 15])
-
-    plt.plot(temperatures, costs, marker='o', linestyle='-', color='b')
-    # plt probably sorts temperatures
-    plt.gca().invert_xaxis()
-
+def saveFigTemperature(x: int, temperatures: list[int], costs: list[int], save_to_directory: str = None, algorithm_name: str = None, id: str = None, **kwargs):
     FONT_SIZE = 25
+    rc('font', **{'size': FONT_SIZE})
 
-    plt.xlabel('Temperature', fontsize=FONT_SIZE)
-    plt.ylabel('Cost', fontsize=FONT_SIZE)
-    plt.title('Cost vs Temperature', fontsize=FONT_SIZE)
+    fig, ax1 = plt.subplots()
+    fig.set_size_inches(30, 15)
+
+    # cost
+    color = 'tab:blue'
+    ax1.set_xlabel('iterations')
+    ax1.set_ylabel('cost', color=color)
+    ax1.plot(range(x), costs, color=color)
+
+    costs_sma_slow = kwargs.get("costs_sma_slow", None)
+    if costs_sma_slow and len(costs_sma_slow) > 0:
+        ax1.plot(range(x), costs_sma_slow, color='fuchsia', label="SMA Slow")
+
+    costs_sma_fast = kwargs.get("costs_sma_fast", None)
+    if costs_sma_fast and len(costs_sma_fast) > 0:
+        ax1.plot(range(x), costs_sma_fast, color='cyan', label="SMA Fast")
+
+    ax1.tick_params(axis='y', labelcolor=color)
+    ax1.tick_params(axis='x')
+
+    ax1.set_xscale('log')
+    ax1.set_yscale('log')
+
+    # temperature
+    ax2 = ax1.twinx()
+
+    color = 'tab:red'
+    ax2.set_ylabel('temperature', color=color)
+    ax2.plot(range(x), temperatures, color=color)
+    ax2.tick_params(axis='y', labelcolor=color)
+
+    ax2.set_xscale('log')
+    ax2.set_yscale('log')
+
+    plt.title('Cost and Temperature')
     plt.grid(True)
 
-    plt.xticks(fontsize=FONT_SIZE)
-    plt.yticks(fontsize=FONT_SIZE)
+    file_path: str  = 'costs-and-temperatures.png'
+    if save_to_directory:
+        if not algorithm_name or not id:
+            raise AssertionError("If path is specified id and algorithm_name must be specified too")
+        location = Path(save_to_directory)
+        location.mkdir(parents=True, exist_ok=True)
+        file_path = str(location / f'{algorithm_name}-costs-and-temperatures-{id}.png')
 
-    plt.savefig("costs-vs-temperatures.png")
+    plt.savefig(file_path)
     plt.close()
+    return file_path

@@ -6,6 +6,31 @@ from networkx import DiGraph, Graph, shortest_path_length
 
 from plots import saveFigTemperature
 
+# Does not work
+
+# ALGORITHM:    The overall algorithm is a classica sa, we loop until the temperature freezes or we
+#               reach a valid solution. We initialize the first solution at random and compute its cost.
+#               Then from that solution we compute a NEIGHBOUR solution and evaluate it, if it is better
+#               we keep it and if it is worse we randomly select based on temperature and cost delta if we
+#               keep it (hill climb) or not.
+
+# TEMPERATURE:  The simulated annealing temperature is is detached from the algorithm performances or
+#               the problem variables. The temperature decreases from 100 to 0.001 in two steps by 0.95
+#               each time as it is greater then 0.5 then it decreases by 0.99. Values are arbitrary. We
+#               hold a variable that holds how many solution per each temperature level we want to search
+#               before updating the temperature, it usually fluctuates betwee 1 and 5.
+
+# COST:         The cost is computed by looping over all dependency edges and check if they are respected,
+#               if they are not we add the distance squared to the cost to discourage further away dependencies.
+#               While we compute the cost we keep the nodes of the best 70% edges of the current solution,
+#               as we find those edges we keep a list of nodes (operations) that is then passed to the NEIGHBOUR
+#               routine to compute a neighbouring solution.
+
+# NEIGHBOUR:    The routine that computes the neighbour solution is as follows: We take the schedule, the previous
+#               solution and nodes that we neek to keep fixed that we computed in COST. Then we first apply
+#               all fixed nodes then we loop over the schedule, and for any non fixed node we choose a random
+#               position the CGRA at the current time between all available PE positions.
+
 def isConnected(pe1: int, pe2: int, size_y: int, size_x: int) -> bool:
     """
     Returns true if `pe1` is conntected to `pe2` for a CGRA of size `size_x * size_y`, otherwise it returns false.
@@ -180,7 +205,7 @@ def pe_distance(arch: Graph, pe1: int, pe2: int) -> int:
     return shortest_path_length(arch, source=pe1, target=pe2)
 
 
-def cost_space_solution(pe_nodes: dict[int, int], schedule: dict[str, list[int]], dfg: DiGraph, arch: Graph, size_x: int, size_y: int) -> tuple[int, list[int]]:
+def cost_space_solution(pe_nodes: dict[int, int], dfg: DiGraph, arch: Graph, size_x: int, size_y: int) -> tuple[int, list[int]]:
     """
     We need to add a value, a "cost" to all actions that randomness produces and that bring us away from a valid solution.
 
@@ -211,8 +236,8 @@ def cost_space_solution(pe_nodes: dict[int, int], schedule: dict[str, list[int]]
 
     cost = 0
 
-    # we keep the best 30% edges
-    BEST_EDGES_TO_KEEP = 0.57
+    # we keep the best 70% edges nodes
+    BEST_EDGES_TO_KEEP = 0.70
     lcdn: list[tuple[int, int, int]] = []
     n_best = math.floor(len(list(dfg.edges)) * BEST_EDGES_TO_KEEP)
 
@@ -272,16 +297,9 @@ def simulatedAnnealingSearch(schedule: dict[str, list[int]], dfg: DiGraph, arch:
 
     TEMPERATURE_DECREASE_STEP_1 = 0.95
     TRESHOLD_DECREASE_STEP_1 = 0.5
-
     TEMPERATURE_DECREASE_STEP_2 = 0.99
     
     ITEMS_PER_TEMPERATURE = 5
-
-    # What can we exploit during the search phase?
-    # -> Scheduling has to be respected
-    # Q: is it possible to recieve more operations than PEs at a given time schedule t?
-    # -> It does not matter if there are operations on the same PEs between dfg dependencies scheduled at different clock times
-    # see Q: at check_solution
 
     print("*** START SA ROUTINE ***\n")
     start = time.time()
@@ -301,7 +319,6 @@ def simulatedAnnealingSearch(schedule: dict[str, list[int]], dfg: DiGraph, arch:
         # add best pe nodes here
         curr_node_pe, curr_pe_nodes = neighbour_sol_generator(schedule, node_pe, keep_nodes, size_x, size_y)
         c, curr_keep_nodes = cost_space_solution(curr_pe_nodes, schedule, dfg, arch, size_x, size_y)
-
         # print(f"New solution cost: {c}")
 
         if c < sol_cost:

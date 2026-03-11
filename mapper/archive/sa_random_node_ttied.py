@@ -5,7 +5,63 @@ import time
 
 from networkx import DiGraph, Graph, shortest_path_length
 
+from benchmark import Benchmark
 from plots import saveFigTemperature
+
+
+# ALGORITHM:    The overall algorithm is a classica sa, we loop until the temperature freezes or we
+#               reach a valid solution. We initialize the first solution at random and compute its cost.
+#               Then from that solution we compute a NEIGHBOUR solution and evaluate it, if it is better
+#               we keep it and if it is worse we randomly select based on temperature and cost delta if we
+#               keep it (hill climb) or not.
+
+# TEMPERATURE:  The simulated annealing temperature is attached to the algorithm performance, we use a simple
+#               moving average to keep track of both a 201 costs SMA and 5 costs SMA, as soon as we reach
+#               freezing temperature we check if the 5 costs SMA is under the 201 costs SMA, if it is we
+#               add temperature and continue the search, as SMAs indicate that we are downtrending with cost.
+
+# COST:         The cost is computed by looping over all dependency edges and check if they are respected,
+#               if they are not we add the distance squared to the cost to discourage further away dependencies.
+
+# NEIGHBOUR:    The routine that computes the neighbour solution is as follows: We take the schedule and the
+#               previous solution. We then randomly select a node between all available nodes within the DFG
+#               by random it means that there is no heuristic in the selection. We then fix all other nodes and
+#               we randomly select a new placement for that previously picked node between all available PEs
+#               its previous placement PE excluded.
+
+
+class IntegerCircularBuffer():
+    # delete not needed for now
+
+    def __init__(self, size: int):
+        self.size = size
+        self.elements = [0 for _ in range(self.size)]
+        self.tail = self.head = 0
+        self.sma_prev = 0
+        self.k = 1 / self.size
+
+    def add_int(self, i: int):
+
+        # compute next head position
+        idx = 0 if self.head + 1 == self.size else self.head + 1
+
+        # move tail if at capacity
+        if idx == self.tail:
+            self.tail = 0 if self.tail + 1 == self.size else self.tail + 1
+
+        # add el and update head
+        self.elements[idx] = i
+        self.head = idx
+
+    def last(self) -> int:
+        return self.elements[self.tail]
+    
+    def next(self, cost: int) -> int:
+        self.sma_prev = self.sma_prev + self.k * (cost - self.last())
+
+        self.add_int(cost)
+        return self.sma_prev
+
 
 def isConnected(pe1: int, pe2: int, size_y: int, size_x: int) -> bool:
     """
@@ -93,7 +149,7 @@ def random_sol_generator(schedule: dict[str, list[int]], size_x: int, size_y: in
     return (node_pe, pe_nodes)
 
 
-def neighbour_sol_generator(schedule: dict[str, list[int]], from_node_pe: dict[int, int], from_pe_nodes: dict[int, list[int]], from_worst_node: int, size_x: int, size_y: int) -> tuple[dict[int, int], dict[int, list[int]]]:
+def neighbour_sol_generator(schedule: dict[str, list[int]], from_node_pe: dict[int, int], size_x: int, size_y: int) -> tuple[dict[int, int], dict[int, list[int]]]:
     """
     Neighbour solution generator: We keep from solution `from_pe_nodes` nodes `keep_nodes` at the PE they are bound to.
 
@@ -119,40 +175,49 @@ def neighbour_sol_generator(schedule: dict[str, list[int]], from_node_pe: dict[i
     :return: A random solution, composed by node_pe and pe_nodes dictionaries. The solution may be both valid and invalid
     :rtype: tuple[dict[int, int], dict[int, list[int]]]
     """
+    node_pe: dict[int, int] = {}
+    pe_nodes: dict[int, list[int]] = {}
 
     size = size_x * size_y
 
-    new_pe: int
-    # init already without current pe position
-    available_pes: list[int] = [i for i in range(size)]
+    node_to_move = random.randint(0, len(from_node_pe))
 
-    # identfy which pe is worst node from
-    for pe in from_pe_nodes:
-        if from_worst_node in from_pe_nodes[pe]:
-            # generate a random position for this node
-            from_pe_nodes[pe].remove(from_worst_node)
+    for t in schedule:
+        if node_to_move in schedule[t]:
+            # move at random
+            for n in schedule[t]:
+                if n != node_to_move:
+                    # maintain rest in schedule
+                    pe = from_node_pe[n]
+                    node_pe[n] = pe
 
-            # find who's at the same time
-            for t in schedule:
-                if from_worst_node in schedule[t]:
-                    # n are all operations scheduled at the same time, also itself
-                    for n in schedule[t]:
-                        available_pes.remove(from_node_pe[n])
-            break
+                    if pe not in pe_nodes:
+                        pe_nodes[pe] = []
+                    pe_nodes[pe].append(n)
 
-    # print()
-    # print(from_node_pe)
-    # print(from_pe_nodes)
-    # print(available_pes)
+            # place it on remaining spots
+            block_list = [node_pe[n] for n in schedule[t] if n != node_to_move]
+            block_list.append(from_node_pe[node_to_move])
+            allow_list = [i for i in range(size) if i not in block_list]
 
-    new_pe = random.choice(available_pes)
-    # print(new_pe)
-    # add to pe_nodes and node_pe
-    if new_pe not in from_pe_nodes:
-        from_pe_nodes[new_pe] = []
-    from_pe_nodes[new_pe].append(from_worst_node)
-    from_node_pe[from_worst_node] = new_pe
-    return (from_node_pe, from_pe_nodes)
+            new_pe = random.choice(allow_list)
+
+            node_pe[node_to_move] = new_pe
+
+            if new_pe not in pe_nodes:
+                pe_nodes[new_pe] = []
+            pe_nodes[new_pe].append(node_to_move)
+        else:
+            # maintain rest
+            for n in schedule[t]:
+                pe = from_node_pe[n]
+                node_pe[n] = pe
+
+                if pe not in pe_nodes:
+                    pe_nodes[pe] = []
+                pe_nodes[pe].append(n)
+
+    return (node_pe, pe_nodes)
 
 
 def pe_distance(arch: Graph, pe1: int, pe2: int) -> int:
@@ -176,7 +241,7 @@ def pe_distance(arch: Graph, pe1: int, pe2: int) -> int:
     return shortest_path_length(arch, source=pe1, target=pe2)
 
 
-def cost_space_solution(pe_nodes: dict[int, int], dfg: DiGraph, arch: Graph, size_x: int, size_y: int) -> tuple[int, int]:
+def cost_space_solution(pe_nodes: dict[int, list[int]], dfg: DiGraph, arch: Graph, size_x: int, size_y: int) -> int:
     """
     We need to add a value, a "cost" to all actions that randomness produces and that bring us away from a valid solution.
 
@@ -194,7 +259,7 @@ def cost_space_solution(pe_nodes: dict[int, int], dfg: DiGraph, arch: Graph, siz
     -> We could distinguish them by "use the same PE as few times as possible" as a mean to reduce chip PE usage consumption
     
     :param pe_nodes: The solution schedule, a map PE -> instructions
-    :type pe_nodes: dict[int, int]
+    :type pe_nodes: dict[int, list[int]]
 
     :param dfg: The DFG graph dependencies
     :type dfg: DiGraph
@@ -204,12 +269,7 @@ def cost_space_solution(pe_nodes: dict[int, int], dfg: DiGraph, arch: Graph, siz
     """
     # schedule would be needed in the case that operations can be sceduled at times t+k, k \in N,
     # i.e. there may be more operations that CGRA size
-
-    # The function has to look at all edges to determine cost
-
     cost = 0
-    max_distance: int = -1
-    worst_node: int = -1
 
     for e in dfg.edges:
         source = e[0]
@@ -224,44 +284,46 @@ def cost_space_solution(pe_nodes: dict[int, int], dfg: DiGraph, arch: Graph, siz
                             d = pe_distance(arch, pd, ps)
                             # print(f"Source operation {source} at pe {pd} to operation {destination} at pe {ps} has distance {d}")
                             cost += d ** 2
-
-                            if max_distance < 0:
-                                max_distance = d
-                                worst_node = random.choice([source, destination])
-                            else:
-                                if max_distance < d:
-                                    max_distance = d
-                                    worst_node = random.choice([source, destination])
-    return cost, worst_node
+    return cost
 
 
-def simulatedAnnealingSearch(schedule: dict[str, list[int]], dfg: DiGraph, arch: Graph, II: int, size_x: int, size_y: int) -> tuple[dict[int, int],  dict[int, list[int]], float]:
+def simulatedAnnealingSearch(schedule: dict[str, list[int]], dfg: DiGraph, arch: Graph, II: int, size_x: int, size_y: int, BENCHMARK: Benchmark) -> tuple[dict[int, int],  dict[int, list[int]], float]:
     print("\n\n\n")
     node_pe: dict[int, int] = {}
     pe_nodes: dict[int, list[int]] = {}
     sol_cost: int
-    worst_node: int
 
     # Data to study the search
     costs = []
     temperatures = []
+    costs_sma_201 = []
+    costs_sma_5 = []
+
+    MAX_ITERATIONS = 1_000_000
 
     # SA Variables
+    # collegare temteratura all'andamento della qualità delle soluzioni
+    TIME_OUT = 4000 # in seconds
+
+    # SA Variables
+    # collegare temteratura all'andamento della qualità delle soluzioni
     TEMPERATURE = 100.0
-
     FREEZING_TEMPERATURE = 0.001
+
+    # TEMPERATURE_DECREASE_BASE = 0.95
+
     TEMPERATURE_DECREASE_STEP_1 = 0.95
-    TRESHOLD_DECREASE_STEP_1 = 0.5
-    TEMPERATURE_DECREASE_STEP_2 = 0.9999
+    TRESHOLD_DECREASE_STEP_1 = 1
+    TEMPERATURE_DECREASE_STEP_2 = 0.99
 
-    ITEMS_PER_TEMPERATURE = 5
-    items = 0
+    TEMPERATURE_REFUEL_STUCK = 60
+    TEMPERATURE_REFUEL = 1
 
-    # What can we exploit during the search phase?
-    # -> Scheduling has to be respected
-    # Q: is it possible to recieve more operations than PEs at a given time schedule t?
-    # -> It does not matter if there are operations on the same PEs between dfg dependencies scheduled at different clock times
-    # see Q: at check_solution
+    ITEMS_PER_TEMPERATRE = 5
+
+    # holds the SMA of the last 50 accepted solutions costs
+    SMA_COST_201 = IntegerCircularBuffer(201)
+    SMA_COST_5 = IntegerCircularBuffer(5)
 
     print("*** START SA ROUTINE ***\n")
     start = time.time()
@@ -270,24 +332,30 @@ def simulatedAnnealingSearch(schedule: dict[str, list[int]], dfg: DiGraph, arch:
     curr_node_pe, curr_pe_nodes = random_sol_generator(schedule, size_x, size_y)
     node_pe = curr_node_pe
     pe_nodes = curr_pe_nodes
-    sol_cost, worst_node = cost_space_solution(pe_nodes, dfg, arch, size_x, size_y)
+    sol_cost = cost_space_solution(pe_nodes, dfg, arch, size_x, size_y)
+    SMA_COST_5.next(sol_cost)
+    SMA_COST_201.next(sol_cost)
+
+    items = 0
+    refuels = 0
+    iterations = 0
 
     # while FREEZING_TEMPERATURE < TEMPERATURE and check_solution(pe_nodes, dfg, size_y, size_x) == False:
-    while FREEZING_TEMPERATURE < TEMPERATURE and sol_cost != 0:
+    while sol_cost != 0 and iterations < MAX_ITERATIONS:
+        if TIME_OUT < time.time() - start:
+            print("TIMED OUT")
+            break
         # print(f"T: {TEMPERATURE}")
 
         # add best pe nodes here
-        curr_node_pe, curr_pe_nodes = neighbour_sol_generator(schedule, node_pe, pe_nodes, worst_node, size_x, size_y)
-        c, curr_worst_node = cost_space_solution(curr_pe_nodes, dfg, arch, size_x, size_y)
-
+        curr_node_pe, curr_pe_nodes = neighbour_sol_generator(schedule, node_pe, size_x, size_y)
+        c = cost_space_solution(curr_pe_nodes, dfg, arch, size_x, size_y)
         # print(f"New solution cost: {c}")
 
         if c < sol_cost:
             node_pe = curr_node_pe
             pe_nodes = curr_pe_nodes
             sol_cost = c
-            worst_node = curr_worst_node
-
             # print(f"New solution is the best solution found so far, keeping it")
         else:
             # apply boltzman
@@ -301,29 +369,53 @@ def simulatedAnnealingSearch(schedule: dict[str, list[int]], dfg: DiGraph, arch:
                 node_pe = curr_node_pe
                 pe_nodes = curr_pe_nodes
                 sol_cost = c
-                worst_node = curr_worst_node
 
         costs.append(sol_cost)
         temperatures.append(TEMPERATURE)
+        costs_sma_201.append(SMA_COST_201.sma_prev)
+        costs_sma_5.append(SMA_COST_5.sma_prev)
 
-        # decrease temperature
-        if items == ITEMS_PER_TEMPERATURE:
-            if TEMPERATURE > TRESHOLD_DECREASE_STEP_1:
-                TEMPERATURE = TEMPERATURE * TEMPERATURE_DECREASE_STEP_1
-            else:
-                TEMPERATURE = TEMPERATURE * TEMPERATURE_DECREASE_STEP_2
+        if items >= ITEMS_PER_TEMPERATRE - 1:
+            # track what we keep from these items within the single temperature step
+            SMA_COST_5.next(sol_cost)
+            SMA_COST_201.next(sol_cost)
             items = 0
+
+            if TEMPERATURE < TRESHOLD_DECREASE_STEP_1:
+                TEMPERATURE = TEMPERATURE * TEMPERATURE_DECREASE_STEP_2
+            else: 
+                TEMPERATURE = TEMPERATURE * TEMPERATURE_DECREASE_STEP_1
+
+            # if we freeze we want to make sure that the cost has not been downtrending
+            if TEMPERATURE < FREEZING_TEMPERATURE:
+                if SMA_COST_5.sma_prev < SMA_COST_201.sma_prev:
+                    # we are downtrending so we should keep exploring
+                    # with low temperature not to go too far around
+                    # and distrup previous work
+                    if refuels > 3:
+                        TEMPERATURE += TEMPERATURE_REFUEL_STUCK
+                        refuels = 0
+                    else:
+                        TEMPERATURE += TEMPERATURE_REFUEL
+                        refuels += 1
         else:
             items += 1
 
+        iterations += 1
         # print()
     end = time.time()
+    total_time = end - start
 
     print("\n*** END SA ROUTINE ***\n")
     print(f"End solution cost: {sol_cost}")
 
     # Plot search data
-    saveFigTemperature(temperatures, costs)
+    # Plot search data
+    if BENCHMARK:
+        file_path = saveFigTemperature(iterations, temperatures, costs, costs_sma_201, costs_sma_5, BENCHMARK.get_directory_path_str(), BENCHMARK.sa_algorithm_type, BENCHMARK.id)
+        BENCHMARK.save_results(total_time, sol_cost, iterations, file_path)
+    else:
+        saveFigTemperature(iterations, temperatures, costs, costs_sma_201, costs_sma_5)
     
     print("\n\n\n")
     return (node_pe, pe_nodes, end - start)

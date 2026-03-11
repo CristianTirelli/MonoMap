@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from enum import Enum
+from pathlib import Path
 import sys
 import math
 import time
@@ -16,6 +17,7 @@ from random import randint
 
 import xml.etree.ElementTree as ET
 import networkx as nx
+import numpy as np
 
 from z3 import *
 from queue import Queue, Empty
@@ -25,17 +27,151 @@ from collections import defaultdict
 from networkx.classes.digraph import DiGraph
 from networkx.classes.graph import Graph
 
+from benchmark import Benchmark
+from datetime import datetime
+
 from plots import saveFigDFG, saveFigMappingsCGRA
 
-# from sa_random_worst_node import simulatedAnnealingSearch
-from sa_random_node import simulatedAnnealingSearch
-# from sa_best_edges import simulatedAnnealingSearch
 
-# Q: for questions that arose
+from simulated_annealing.strategies.random_node import RandomNode, RandomNodeWarmupSma, RandomNodeTemperatureSma
+def RandomNode_routine(
+    # Common, needed Input values to all strategies
+    schedule: dict[str, list[int]],
+    size_x: int,
+    size_y: int,
+    dfg: Graph,
+    arch: Graph,
+    BENCHMARK: Benchmark,
+    **kwargs: dict):
+    BENCHMARK.set_algorithm_type(RandomNode.STRATEGY_ID)
+    return RandomNode(schedule, size_x, size_y, dfg, arch, BENCHMARK).simulatedAnnealingSearch()
+
+def RandomNodeWarmupSma_routine(
+    # Common, needed Input values to all strategies
+    schedule: dict[str, list[int]],
+    size_x: int,
+    size_y: int,
+    dfg: Graph,
+    arch: Graph,
+    BENCHMARK: Benchmark,
+    **kwargs: dict):
+    BENCHMARK.set_algorithm_type(RandomNodeWarmupSma.STRATEGY_ID)
+    return RandomNodeWarmupSma(schedule, size_x, size_y, dfg, arch, BENCHMARK).simulatedAnnealingSearch()
+
+def RandomNodeTemperatureSma_routine(
+    # Common, needed Input values to all strategies
+    schedule: dict[str, list[int]],
+    size_x: int,
+    size_y: int,
+    dfg: Graph,
+    arch: Graph,
+    BENCHMARK: Benchmark,
+    **kwargs: dict):
+    BENCHMARK.set_algorithm_type(RandomNodeTemperatureSma.STRATEGY_ID)
+    return RandomNodeTemperatureSma(schedule, size_x, size_y, dfg, arch, BENCHMARK).simulatedAnnealingSearch()
+
+
+# algo name -> routine to construct and return CGRA solution tuple: tuple[node_pe, pe_noed, time]
+AUTOMATED_SPACE_SEARCH_STRATEGIES = {
+    "random": RandomNode_routine,
+    "random-warmup-sma": RandomNodeWarmupSma_routine,
+    "random-temperature-sma": RandomNodeTemperatureSma_routine,
+    # "random-cooling": RandomNodeTemperatureSma_routine,
+    # "random-swap-cooling": RandomNodeTemperatureSma_routine,
+}
+
+II_BENCHMARKS_TABLE = {
+ ("aes", 2, 2): 16,
+ ("aes", 5, 5): 16,
+ ("aes", 10, 10): 16,
+ ("aes", 20, 20): 16,
+
+ ("backdrop", 2, 2): 10,
+ ("backdrop", 5, 5): 5,
+ ("backdrop", 10, 10): 7,
+ ("backdrop", 20, 20): 7,
+
+ ("basicmath", 2, 2): 7,
+ ("basicmath", 5, 5): 7,
+ ("basicmath", 10, 10): 7,
+ ("basicmath", 20, 20): 7,
+
+ ("bitcount", 2, 2): 3,
+ ("bitcount", 5, 5): 3,
+ ("bitcount", 10, 10): 3,
+ ("bitcount", 20, 20): 3,
+
+ ("cfd", 2, 2): -1,
+ ("cfd", 5, 5): 3,
+ ("cfd", 10, 10): -1,
+ ("cfd", 20, 20): -1,
+
+ ("crc32", 2, 2): 11,
+ ("crc32", 5, 5): 11,
+ ("crc32", 10, 10): 11,
+ ("crc32", 20, 20): 11,
+
+ ("fft", 2, 2): 7,
+ ("fft", 5, 5): 7,
+ ("fft", 10, 10): 7,
+ ("fft", 20, 20): 7,
+
+ ("gsm", 2, 2): 6,
+ ("gsm", 5, 5): 5,
+ ("gsm", 10, 10): 5,
+ ("gsm", 20, 20): 5,
+
+ ("heartwall", 2, 2): 9,
+ ("heartwall", 5, 5): 3,
+ ("heartwall", 10, 10): 3,
+ ("heartwall", 20, 20): 3,
+
+ ("hotspot3D", 2, 2): 17,
+ ("hotspot3D", 5, 5): 6,
+ ("hotspot3D", 10, 10): -1,
+ ("hotspot3D", 20, 20): -1,
+
+ ("lud", 2, 2): 7,
+ ("lud", 5, 5): 3,
+ ("lud", 10, 10): 3,
+ ("lud", 20, 20): 3,
+
+ ("nw", 2, 2): 9,
+ ("nw", 5, 5): 2,
+ ("nw", 10, 10): 2,
+ ("nw", 20, 20): 2,
+
+ ("particlefilter", 2, 2): 10,
+ ("particlefilter", 5, 5): 9,
+ ("particlefilter", 10, 10): 9,
+ ("particlefilter", 20, 20): 9,
+
+ ("sha1", 2, 2): 6,
+ ("sha1", 5, 5): 4,
+ ("sha1", 10, 10): 4,
+ ("sha1", 20, 20): 4,
+
+ ("sha2", 2, 2): 7,
+ ("sha2", 5, 5): 7,
+ ("sha2", 10, 10): 7,
+ ("sha2", 20, 20): 7,
+
+ ("stringsearch", 2, 2): 7,
+ ("stringsearch", 5, 5): 3,
+ ("stringsearch", 10, 10): 3,
+ ("stringsearch", 20, 20): 3,
+
+ ("susan", 2, 2): 6,
+ ("susan", 5, 5): 2,
+ ("susan", 10, 10): 2,
+ ("susan", 20, 20): 2,
+}
+
 
 class SpaceSearchAlgorithm(Enum):
     MONOMORPHISM: int = 0
     SIMULATED_ANNEALING: int = 1
+
 
 def getMaxOutDegree(dfg: DiGraph) -> int:
     """
@@ -108,10 +244,11 @@ def check_solution(pe_nodes: dict, dfg: DiGraph, size_y: int, size_x: int) -> bo
             if source in pe_nodes[ps]:
                 for pd in pe_nodes:
                     if destination in pe_nodes[pd]:
-                        # Q: hows 0 and 13 dependency respected? is it that it does not matter if there are multiple clock times and operations between each operation and their respective PEs? For example, result of 0 at t = 3 can be stored in a registed until operation 13 ar t = 7 comes up and picks it from a connected PE?
-                        # Yes! Since MRRG has edges from PE 0 to any adjacent PE at any clocktime t
+                        # 0 at PE 16 not connected to 6 at PE 10
                         # print(f"Checkign connection for source: {source}, destination: {destination} and respective ps: {ps}, pd: {pd}")
                         if isConnected(pd, ps, size_y, size_x) == False:
+                            print(f"pe_nodes {pe_nodes}")
+                            print(f"{source} at PE {ps} not connected to {destination} at PE {pd}")
                             return False
     return True
 
@@ -125,7 +262,7 @@ def getMobilityValue(kms, node) -> int:
     return mobility
 
 
-def map(dfg: DiGraph, arch: Graph, II: int, topology_degree: int, size_y: int, size_x: int, SSA: SpaceSearchAlgorithm):
+def map(dfg: DiGraph, arch: Graph, II: int, topology_degree: int, size_y: int, size_x: int, SSA: SpaceSearchAlgorithm, BENCHMARK: Benchmark | None, A_ALGO_NAME: str | None):
     array_size = size_y * size_x
     # TODO: should put in the que the mapping
     total_time = 0
@@ -146,7 +283,6 @@ def map(dfg: DiGraph, arch: Graph, II: int, topology_degree: int, size_y: int, s
             for succ in list(dfg.successors(n)):
                 if int(succ) in schedule[i]:
                     count += 1
-            # Q: why 5? Whats overscheduling of children? Shouldnt it be count greather than size (size_x*size_y)?
             if count > 5:
                 print("Node ", n, "overscheduling of childs")
                 exit(0)
@@ -206,12 +342,16 @@ def map(dfg: DiGraph, arch: Graph, II: int, topology_degree: int, size_y: int, s
     print("Time to generate architecture: " + str(end - start))
 
     # MRRG -> arch: Graph, holds the (undirected) edges of the CGRA MRRG graph
-    saveFigDFG(dfg, schedule)
+    if BENCHMARK:
+        BENCHMARK.set_dfg_nodes(dfg.number_of_nodes())
+        saveFigDFG(dfg, schedule, BENCHMARK.get_directory_path_no_size_str())
+    else:
+        saveFigDFG(dfg, schedule)
 
     # write_dot(G1, "G1.dot")
     # Convert DFG to undirected graph
-    dfg = dfg.to_undirected()
-    # Q: Wouldn't this operation break the dependencies relations? Do i even care, dont think so..?
+    directed_dfg: DiGraph = dfg
+    dfg: Graph = dfg.to_undirected()
 
     # Assign attributes to DFG nodes
     # the attribute for every node is
@@ -235,22 +375,28 @@ def map(dfg: DiGraph, arch: Graph, II: int, topology_degree: int, size_y: int, s
             print("Time for monomorphism search: " + str(space_search_time))
         case SpaceSearchAlgorithm.SIMULATED_ANNEALING:
             print("Simulated annealing search start...")
-            node_pe, pe_nodes, space_search_time = simulatedAnnealingSearch(schedule, dfg, arch, II, size_x, size_y)
+
+            # Pick from automated
+            if A_ALGO_NAME:
+                node_pe, pe_nodes, space_search_time = AUTOMATED_SPACE_SEARCH_STRATEGIES[A_ALGO_NAME](
+                    schedule,
+                    size_x,
+                    size_y,
+                    dfg,
+                    arch,
+                    BENCHMARK,
+                    directed_dfg=directed_dfg
+                )
+            else:
+                # None
+                # RandomNode
+                node_pe, pe_nodes, space_search_time = RandomNode(schedule, size_x, size_y, dfg, arch, BENCHMARK).simulatedAnnealingSearch()
+
+            # node_pe, pe_nodes, space_search_time = ...(schedule, size_x, size_y, dfg, arch, BENCHMARK, poisson_routine_type=PoissonRoutineEnum.FIXED_LAMBDA, fixed_lambda_value=1).simulatedAnnealingSearch()
             print("Time for simulated annealing search: " + str(space_search_time))
-            pass
         case _:
             print(f"Space Search Algorithm {SSA} is not defined")
             exit(1)
-    
-    # print(f"\nnode_pe\n")
-    # for n in node_pe:
-    #     print(f"{n}: {node_pe[n]}")
-    # print(f"\n")
-
-    # print(f"\npe_nodes\n")
-    # for n in pe_nodes:
-    #     print(f"{n}: {pe_nodes[n]}")
-    # print(f"\n")
 
     total_time += space_search_time
     # end generation of SPACE solution
@@ -259,8 +405,9 @@ def map(dfg: DiGraph, arch: Graph, II: int, topology_degree: int, size_y: int, s
     if len(pe_nodes) == 0:
         print("Solution not found!")
         exit(0)
-
+        
     if check_solution(pe_nodes, dfg, size_y, size_x) == False:
+        print(node_pe)
         print("Solution is not correct")
         print()
         exit(0)
@@ -271,23 +418,6 @@ def map(dfg: DiGraph, arch: Graph, II: int, topology_degree: int, size_y: int, s
     for i in range(0, II):
         for n in schedule[i]:
             print("Node ", n, " Mapped on PE ", node_pe[n], " at time ", i)
-
-    print("PE usage")
-
-    # total_pe_usages = 0
-    # for pe in range(len(pe_nodes)):
-    #     times = len(pe_nodes[pe])
-    #     print(f"PE {pe} used {times} times")
-    #     total_pe_usages += times
-    
-    # for pe in range(size_x * size_y):
-    #     if pe not in pe_nodes:
-    #         print(f"PE {pe} is unused")
-
-    # print(f"Out of all used PEs on average a PE is used {total_pe_usages / len(pe_nodes)} times")
-    # print(f"Out of all PEs on average a PE is used {total_pe_usages / (size_x * size_y)} times")
-
-    saveFigMappingsCGRA(node_pe, schedule, size_x, size_y)
 
     print("Total time:", total_time)
 
@@ -841,7 +971,13 @@ def main():
         '-i', type=int, help='Iteration Itnerval (default value: -1)', default=-1)
     parser.add_argument(
         '-s', type=int, help='Space Search Algorithm (Monomorphism: 0 (default), Simulated Annealing: 1)', default=0)
-
+    parser.add_argument(
+        '-b', type=str, help='If to save the run in the run data, the name of the benchmark we solve for is passed as parameter: -b [benchmark_name]', default=None)
+    parser.add_argument(
+        '-a', action='store_true', help='Picks the II of already known benchmarks automatically, it must be used alongside -b, no parameter needed, the algorithm named passed with -b will be used\nIf the algorithm is not found in the table the computed or passed in (-i) II will be used otherwise the table will override any computed or passed in II')
+    parser.add_argument(
+        '-an', type=str, help='Name of the algorithm to be selected during automated benchmarks', default=None)
+    
     # Parse Arguments
     args = parser.parse_args()
 
@@ -860,6 +996,12 @@ def main():
     topology_degree = int(args.d)
 
     SPACE_SEARCH_ALGORITHM = SpaceSearchAlgorithm(args.s)
+
+    if (args.b and SPACE_SEARCH_ALGORITHM != SpaceSearchAlgorithm.SIMULATED_ANNEALING):
+        print("Benchmarking is defined only for Simulated Annealing, you need to set -s 1 for benchmarking to work properly.")
+        exit(1)
+
+    BENCHMARK = None if not args.b else Benchmark(args.b, None, datetime.now().isoformat(timespec='seconds'), CGRA_X, CGRA_Y)
 
     print(edgefile)
     print(CGRA_X, "x", CGRA_Y)
@@ -897,6 +1039,26 @@ def main():
         II = int(args.i)
         print("Manually setting II to", II)
 
+    if args.a:
+        if not args.b:
+            print("When automating you must also benchmark \"-b\"")
+            exit(1)
+
+        if not args.an:
+            print("When automating you must also pass an algorithm name \"-an\"")
+            exit(1)
+        
+        key = (args.b, CGRA_X, CGRA_Y)
+        if args.b and key in II_BENCHMARKS_TABLE and II_BENCHMARKS_TABLE[key] != -1:
+            print(f"Dictionary setting II for: ({args.b}, {CGRA_X}, {CGRA_Y}) to", II)
+        else:
+            if CGRA_X == 2 and CGRA_Y == 2:
+                print(f"Dictionary II not found for: ({args.b}, {CGRA_X}, {CGRA_Y}), exiting")
+                exit(0)
+            else:
+                print(f"Dictionary II not found for: ({args.b}, {CGRA_X}, {CGRA_Y}), keeping II automatically: {II}")
+
+
     if (topology_degree > computeTopologyDegree(CGRA_Y, CGRA_X)):
         print("Topology check failed!")
         print("Invalid degree for 2D-mesh topology!")
@@ -906,7 +1068,7 @@ def main():
         exit(0)
     print("topology: ", topology_degree)
 
-    map(dfg, arch, II, topology_degree, CGRA_Y, CGRA_X, SPACE_SEARCH_ALGORITHM)
+    map(dfg, arch, II, topology_degree, CGRA_Y, CGRA_X, SPACE_SEARCH_ALGORITHM, BENCHMARK, args.an)
 
 
 if __name__ == "__main__":
