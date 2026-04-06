@@ -1,0 +1,15 @@
+# python
+mono-compiler
+__pycache__
+
+# macos 
+.DS_Store
+
+# benchmarks
+mapper/benchmark results/
+benchmarks/b_correct
+
+# others
+acc*
+extracted.ll
+cgra-mono-code-acc*
