@@ -16,7 +16,7 @@ while getopts "f:x:y:d:i:" opt; do
 done
 echo "$X"
 echo "$Y"
-./llvm-project/build/bin/clang -O3 -fno-unroll-loops -fno-vectorize -fno-slp-vectorize -S -emit-llvm -o extracted.ll "$F"
+./llvm-project/build/bin/clang -O3 -fno-unroll-loops -fno-vectorize -fno-slp-vectorize -S -emit-llvm -isysroot $(xcrun --show-sdk-pat) -o extracted.ll "$F"
 ./llvm-project/build/bin/opt -disable-output extracted.ll -passes=cgra-extract
 
 for folder in acc*; do
