@@ -11,8 +11,8 @@ import math
 import random
 import time
 
-from plots import saveFigTemperature
-from simulated_annealing.TODO_simulated_annealing_tabu_space_search_morpher import SimulatedAnnealingTabuSpaceSearchMorpher
+# TODO Old implementatio to adjust
+
 
 # NEIGHBOUR:    We take an operations at random and position it at random on all other available positions (its previous
 #               position excluded)
@@ -178,7 +178,7 @@ class RandomNodeTabu(SimulatedAnnealingTabuSpaceSearchMorpher):
     # Tabu Specific Simulated Annealing Search
     def simulatedAnnealingSearch(self) -> tuple[dict[int, int],  dict[int, list[int]], float]:
         print("*** START SA ROUTINE ***\n")
-        start = time.time()
+        start = time.process_time()
 
         self.temperature = self.START_TEMPERATURE
 
@@ -205,7 +205,7 @@ class RandomNodeTabu(SimulatedAnnealingTabuSpaceSearchMorpher):
 
         iterations = 0
         while self.sol_cost != 0 and iterations < self.MAX_ITERATIONS:
-            running_time = time.time() - start
+            running_time = time.process_time() - start
 
             if self.TIME_OUT < running_time:
                 print("TIMED OUT")
@@ -309,7 +309,7 @@ class RandomNodeTabu(SimulatedAnnealingTabuSpaceSearchMorpher):
                 iterations += 1
             else:
                 items += 1
-        end = time.time()
+        end = time.process_time()
         total_time = end - start
 
         print("\n*** END SA ROUTINE ***\n")

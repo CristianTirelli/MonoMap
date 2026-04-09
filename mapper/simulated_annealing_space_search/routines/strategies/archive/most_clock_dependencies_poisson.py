@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 import random
 
 from simulated_annealing.strategies.poisson_routine_types import PoissonRoutineEnum
-from simulated_annealing.simulated_annealing_space_search_morpher_warmup_sma import SimulatedAnnealingSpaceSearchMorpherWarmupSma
 
 import numpy as np
 
@@ -21,7 +20,7 @@ import numpy as np
 #               a random PE position from the one available minus the current PE of such node.
 
 @dataclass
-class MostClockDependenciesPoisson(SimulatedAnnealingSpaceSearchMorpherWarmupSma):
+class MostClockDependenciesPoisson():
     # initialized in __post_init__
     STRATEGY_ID: str = field(default=None, init=False)
     BASE_STRATEGY: str = field(default="MOST-CLOCK-DEPENDENCIES_", init=False)

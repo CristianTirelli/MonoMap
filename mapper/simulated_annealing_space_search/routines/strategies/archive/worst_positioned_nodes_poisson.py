@@ -2,7 +2,6 @@ import random
 from dataclasses import dataclass, field
 
 from simulated_annealing.strategies.poisson_routine_types import PoissonRoutineEnum
-from simulated_annealing.simulated_annealing_space_search_morpher_warmup_sma import SimulatedAnnealingSpaceSearchMorpherWarmupSma
 
 import numpy as np
 
@@ -24,7 +23,7 @@ import numpy as np
 
 
 @dataclass
-class WorstPositionedNodesPoisson(SimulatedAnnealingSpaceSearchMorpherWarmupSma):
+class WorstPositionedNodesPoisson():
     STRATEGY_ID: str = field(default=None, init=False)
     BASE_STRATEGY: str = field(default="WORST-POSITIONED-NODE_", init=False)
 

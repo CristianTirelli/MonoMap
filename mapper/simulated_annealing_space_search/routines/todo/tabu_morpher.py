@@ -1,23 +1,25 @@
-import math
 import random
-import time
 from dataclasses import dataclass, field
 
 from networkx import Graph, shortest_path_length
 
 from benchmark import Benchmark
-from plots import saveFigTemperature
+
+# TODO unconnected old implementation class
 
 # ALGORITHM:    We have a max cap of iterations 1_000_000 and a temperature that is detached from the main loop,
 #               until we reach a solution, we complete all iterations or we timeout we continue the search.
 
-# TEMPERATURE:  Temperature
+# TEMPERATURE:  Temperature moves down following Morpher cooling schedule, and SMA: 201 and 5, if 201 reaches 5
+#               we warm up following a schedule: += 0.001 / math.log(warming_up_step + math.e) then if we find a
+#               better solution or we reach a cap of 1000 times the freezing temperature we stop warming up and
+#               continue cooling
 
 # COST:         The cost function simply calculates the Manhattan distance of nodes that do not resespect dependencies
 
 @dataclass
-class SimulatedAnnealingSpaceSearchTemperatureSma:
-    TEMPERATURE_STRATEGY_ID: str = field(default="TEMPERATURE-SMA_", init=False)
+class TabuMorpher:
+    TEMPERATURE_STRATEGY_ID: str = field(default="MORPHER-SMA-BEST-AND-MAX-CAP-TABU_", init=False)
 
     # Runtime variables
     # holds the current best solution
@@ -43,7 +45,7 @@ class SimulatedAnnealingSpaceSearchTemperatureSma:
 
     # iterations and timeout
     MAX_ITERATIONS: int = field(default=1_000_000, init=False)
-    TIME_OUT: int = field(default=60 * 10, init=False)
+    TIME_OUT: int = field(default=60 * 50, init=False)
     # TIME_OUT: int = field(default=4000, init=False)
 
     # temperature
@@ -217,136 +219,7 @@ class SimulatedAnnealingSpaceSearchTemperatureSma:
 
     # Hybrid: Overall Temperature and Simulated Annealing search is shared
     def simulatedAnnealingSearch(self) -> tuple[dict[int, int],  dict[int, list[int]], float]:
-        print("*** START SA ROUTINE ***\n")
-        start = time.time()
-
-        self.temperature = self.START_TEMPERATURE
-
-        # Generate starting random solution and evaluate it
-        self.random_sol_generator()
-        self.sol_cost = self.cost_space_solution(self.node_pe)
-
-        # Search Data
-        costs = []
-        temperatures = []
-        costs_sma_slow = []
-        costs_sma_fast = []
-
-        # Search local variables
-        self.cost_sma_fast: float = float(self.sol_cost)
-        self.cost_sma_slow: float = float(self.sol_cost)
-
-        acceptance = 0
-        items = 0
-
-        warmup_cost: int
-        warming_up = False
-        warming_up_step = 1
-
-        iterations = 0
-        while self.sol_cost != 0 and iterations < self.MAX_ITERATIONS:
-            running_time = time.time() - start
-
-            if self.TIME_OUT < running_time:
-                print("TIMED OUT")
-                break
-
-            # add best pe nodes here
-            curr_node_pe, curr_pe_nodes = self.neighbour_sol_generator()
-            c = self.cost_space_solution(curr_node_pe)
-
-            if c < self.sol_cost:
-                self.node_pe = curr_node_pe
-                self.pe_nodes = curr_pe_nodes
-                self.sol_cost = c
-
-                acceptance += 1
-            else:
-                # apply boltzman
-                delta_E = c - self.sol_cost
-                P = math.exp(- delta_E / self.temperature)
-                rnd = random.random()
-
-                if rnd < P:
-                    self.node_pe = curr_node_pe
-                    self.pe_nodes = curr_pe_nodes
-                    self.sol_cost = c
-
-                    acceptance += 1
-
-            if items >= self.ITEMS_PER_TEMPERATRE - 1:
-                # New average = old average * (n-1)/n + new value /n
-                self.cost_sma_fast = self.cost_sma_fast * ((self.SMA_FAST_ITEMS - 1) / self.SMA_FAST_ITEMS) + self.sol_cost / self.SMA_FAST_ITEMS
-                self.cost_sma_slow  = self.cost_sma_slow * ((self.SMA_SLOW_ITEMS - 1) / self.SMA_SLOW_ITEMS) + self.sol_cost / self.SMA_SLOW_ITEMS
-
-                # track what we keep from these items within the single temperature step
-                costs.append(self.sol_cost)
-                temperatures.append(self.temperature)
-                costs_sma_fast.append(self.cost_sma_fast)
-                costs_sma_slow.append(self.cost_sma_slow)
-
-                acceptance_rate = acceptance / self.ITEMS_PER_TEMPERATRE
-
-                print(f"Running for: {int(running_time):4d}s  Warming up: {str(warming_up)}  Acceptance rate: {acceptance_rate:2.2f}  Cost: {self.sol_cost:6d}  SMA {self.SMA_SLOW_ITEMS}: {self.cost_sma_slow:4.1f}  SMA {self.SMA_FAST_ITEMS}: {self.cost_sma_fast:4.1f}  Temperature: {self.temperature:4.4f}", end='\r')
-
-                items = 0
-                acceptance = 0
-
-                if warming_up:
-                    # when should i stop warming up? when can i be mostly sure that we escaped a possible stuck local minimum?
-                    # if we find a result that is less costly than the current best result?
-
-                    # t increase
-                    self.temperature += 0.001 / math.log(warming_up_step + math.e)
-
-                    # based on temperature cap
-                    if self.temperature >= self.TEMPERATURE_REFUEL_LIMIT:
-                        warming_up = False
-
-                    # based on better solutions found
-                    if self.sol_cost < warmup_cost:
-                        warming_up = False
-                    warming_up_step += 1
-                else:
-                    if self.cost_sma_fast < self.cost_sma_slow and self.cost_sma_slow < self.cost_sma_fast + self.EPSILON and acceptance_rate < 0.1:
-                        warming_up = True
-                        warming_up_step = 1
-                        warmup_cost = self.sol_cost
-
-                    if self.temperature > self.FREEZING_TEMPERATURE:
-                        self.temperature = self.updateTemperature(self.temperature, acceptance_rate)
-                iterations += 1
-            else:
-                items += 1
-        end = time.time()
-        total_time = end - start
-
-        print("\n*** END SA ROUTINE ***\n")
-        print(f"End solution cost: {self.sol_cost}")
-
-        # Plot search data
-        if self.BENCHMARK:
-            file_path: str = ""
-            try:
-                file_path = saveFigTemperature(
-                    iterations,
-                    temperatures,
-                    costs,
-                    self.BENCHMARK.get_directory_path_str(),
-                    self.BENCHMARK.sa_algorithm_type,
-                    self.BENCHMARK.id,
-                    costs_sma_slow=costs_sma_slow,
-                    costs_sma_fast=costs_sma_fast
-                )
-            except Exception as e:
-                print(f"Exception saving plot: {e}")
-
-            self.BENCHMARK.save_results(total_time, self.sol_cost, iterations, file_path)
-        else:
-            try:
-                saveFigTemperature(iterations, temperatures, costs, costs_sma_slow, costs_sma_fast)
-            except Exception as e:
-                print(f"Exception saving plot: {e}")
-        
-        print("\n\n\n")
-        return (self.node_pe, self.pe_nodes, total_time)
+        """
+        Tabu specific SA search is overridden by strategy
+        """
+        raise NotImplementedError

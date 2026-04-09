@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from enum import Enum
+import json
 from pathlib import Path
 import sys
 import math
@@ -27,14 +28,15 @@ from collections import defaultdict
 from networkx.classes.digraph import DiGraph
 from networkx.classes.graph import Graph
 
+from recorder import Recorder
 from benchmark import Benchmark
 from datetime import datetime
 
-from plots import saveFigDFG, saveFigMappingsCGRA
+from plots import saveFigDFG
 
 
-from simulated_annealing.strategies.random_node import RandomNode, RandomNodeWarmupSma, RandomNodeTemperatureSma
-def RandomNode_routine(
+from simulated_annealing_space_search.routines.strategies.random_node import RandomNodeCoolingResetSma, RandomNodeMorpherResetSma
+def RandomNodeCoolingResetSma_routine(
     # Common, needed Input values to all strategies
     schedule: dict[str, list[int]],
     size_x: int,
@@ -42,11 +44,11 @@ def RandomNode_routine(
     dfg: Graph,
     arch: Graph,
     BENCHMARK: Benchmark,
+    RECORDER: Recorder,
     **kwargs: dict):
-    BENCHMARK.set_algorithm_type(RandomNode.STRATEGY_ID)
-    return RandomNode(schedule, size_x, size_y, dfg, arch, BENCHMARK).simulatedAnnealingSearch()
+    return RandomNodeCoolingResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
 
-def RandomNodeWarmupSma_routine(
+def RandomNodeMorpherResetSma_routine(
     # Common, needed Input values to all strategies
     schedule: dict[str, list[int]],
     size_x: int,
@@ -54,30 +56,58 @@ def RandomNodeWarmupSma_routine(
     dfg: Graph,
     arch: Graph,
     BENCHMARK: Benchmark,
+    RECORDER: Recorder,
     **kwargs: dict):
-    BENCHMARK.set_algorithm_type(RandomNodeWarmupSma.STRATEGY_ID)
-    return RandomNodeWarmupSma(schedule, size_x, size_y, dfg, arch, BENCHMARK).simulatedAnnealingSearch()
+    return RandomNodeMorpherResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
 
-def RandomNodeTemperatureSma_routine(
-    # Common, needed Input values to all strategies
+from simulated_annealing_space_search.routines.strategies.random_node_with_swap import RandomNodeWithSwapAndVisitsHeuristicCoolingResetSma, RandomNodeWithSwapNewRoutineCoolingResetSma, RandomNodeWithSwapMorpherResetSma
+def RandomNodeWithSwapAndVisitsHeuristicCoolingResetSma_routine(
     schedule: dict[str, list[int]],
     size_x: int,
     size_y: int,
     dfg: Graph,
     arch: Graph,
     BENCHMARK: Benchmark,
+    RECORDER: Recorder,
     **kwargs: dict):
-    BENCHMARK.set_algorithm_type(RandomNodeTemperatureSma.STRATEGY_ID)
-    return RandomNodeTemperatureSma(schedule, size_x, size_y, dfg, arch, BENCHMARK).simulatedAnnealingSearch()
+    return RandomNodeWithSwapAndVisitsHeuristicCoolingResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
 
+def RandomNodeWithSwapCoolingResetSma_routine(
+    schedule: dict[str, list[int]],
+    size_x: int,
+    size_y: int,
+    dfg: Graph,
+    arch: Graph,
+    BENCHMARK: Benchmark,
+    RECORDER: Recorder,
+    **kwargs: dict):
+    return RandomNodeWithSwapNewRoutineCoolingResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
+
+def RandomNodeWithSwapMorpherResetSma_routine(
+    schedule: dict[str, list[int]],
+    size_x: int,
+    size_y: int,
+    dfg: Graph,
+    arch: Graph,
+    BENCHMARK: Benchmark,
+    RECORDER: Recorder,
+    **kwargs: dict):
+    return RandomNodeWithSwapMorpherResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
+
+from simulated_annealing_space_search.routines.strategies.random_node_with_swap import RandomNodeWithSwapCoolingResetToProbabilityDynamicSma, RandomNodeWithSwapCoolingResetToProbabilityDynamicLearnedSma, RandomNodeWithSwapFixedCoolingResetToProbabilitySma
 
 # algo name -> routine to construct and return CGRA solution tuple: tuple[node_pe, pe_noed, time]
 AUTOMATED_SPACE_SEARCH_STRATEGIES = {
-    "random": RandomNode_routine,
-    "random-warmup-sma": RandomNodeWarmupSma_routine,
-    "random-temperature-sma": RandomNodeTemperatureSma_routine,
-    # "random-cooling": RandomNodeTemperatureSma_routine,
-    # "random-swap-cooling": RandomNodeTemperatureSma_routine,
+    # TODO benchmark
+    "random-cooling-reset": RandomNodeCoolingResetSma_routine,
+    # new routine add to dict name
+    "random-swap-cooling-reset-new-routine": RandomNodeWithSwapCoolingResetSma_routine,
+
+    "random-morpher-reset-reset-sma": RandomNodeMorpherResetSma_routine,
+    "random-swap-morpher-reset-reset-sma": RandomNodeWithSwapMorpherResetSma_routine,
+
+    # TODO implement
+    "random-cooling-visits-reset": RandomNodeWithSwapAndVisitsHeuristicCoolingResetSma_routine
 }
 
 II_BENCHMARKS_TABLE = {
@@ -237,6 +267,8 @@ def check_solution(pe_nodes: dict, dfg: DiGraph, size_y: int, size_x: int) -> bo
         bool: True if dependencies are conneted in the CGRA, False otherwise
     """
 
+    connected = True
+
     for e in dfg.edges:
         source = e[0]
         destination = e[1]
@@ -244,13 +276,10 @@ def check_solution(pe_nodes: dict, dfg: DiGraph, size_y: int, size_x: int) -> bo
             if source in pe_nodes[ps]:
                 for pd in pe_nodes:
                     if destination in pe_nodes[pd]:
-                        # 0 at PE 16 not connected to 6 at PE 10
-                        # print(f"Checkign connection for source: {source}, destination: {destination} and respective ps: {ps}, pd: {pd}")
                         if isConnected(pd, ps, size_y, size_x) == False:
-                            print(f"pe_nodes {pe_nodes}")
                             print(f"{source} at PE {ps} not connected to {destination} at PE {pd}")
-                            return False
-    return True
+                            connected = False
+    return connected
 
 
 def getMobilityValue(kms, node) -> int:
@@ -262,15 +291,15 @@ def getMobilityValue(kms, node) -> int:
     return mobility
 
 
-def map(dfg: DiGraph, arch: Graph, II: int, topology_degree: int, size_y: int, size_x: int, SSA: SpaceSearchAlgorithm, BENCHMARK: Benchmark | None, A_ALGO_NAME: str | None):
+def map(dfg: DiGraph, arch: Graph, II: int, topology_degree: int, size_y: int, size_x: int, SSA: SpaceSearchAlgorithm, BENCHMARK: Benchmark | None, A_ALGO_NAME: str | None, RECORDER: Recorder):
     array_size = size_y * size_x
     # TODO: should put in the que the mapping
     total_time = 0
     # Generate valid schedule
     print("Start schedule generation")
-    start = time.time()
+    start = time.process_time()
     schedule = generate_valid_schdule(dfg, II, array_size, topology_degree)
-    end = time.time()
+    end = time.process_time()
     print("End schedule generation: ", (end - start))
     
     total_time += (end - start)
@@ -317,7 +346,7 @@ def map(dfg: DiGraph, arch: Graph, II: int, topology_degree: int, size_y: int, s
     # Add dependency edges
     print("Start architecture graph generation")
 
-    start = time.time()
+    start = time.process_time()
 
     # Generate CGRA MRRG Graph in arch: Graph
     # adds proprty time to PEs
@@ -338,7 +367,7 @@ def map(dfg: DiGraph, arch: Graph, II: int, topology_degree: int, size_y: int, s
                         arch.nodes[n_j]['time'] = j
 
                         arch.add_edge(n_i, n_j)
-    end = time.time()
+    end = time.process_time()
     print("Time to generate architecture: " + str(end - start))
 
     # MRRG -> arch: Graph, holds the (undirected) edges of the CGRA MRRG graph
@@ -385,14 +414,32 @@ def map(dfg: DiGraph, arch: Graph, II: int, topology_degree: int, size_y: int, s
                     dfg,
                     arch,
                     BENCHMARK,
+                    RECORDER,
                     directed_dfg=directed_dfg
                 )
             else:
-                # None
-                # RandomNode
-                node_pe, pe_nodes, space_search_time = RandomNode(schedule, size_x, size_y, dfg, arch, BENCHMARK).simulatedAnnealingSearch()
+                # time checks
+                # node_pe, pe_nodes, space_search_time = RandomNodeCoolingResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER, seed_start_configuration=12345, seed_algorithm_run=59226991).simulatedAnnealingSearch()
+                # node_pe, pe_nodes, space_search_time = RandomNodeCoolingResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER, seed_start_configuration=12345, seed_algorithm_run=40226105).simulatedAnnealingSearch()
 
-            # node_pe, pe_nodes, space_search_time = ...(schedule, size_x, size_y, dfg, arch, BENCHMARK, poisson_routine_type=PoissonRoutineEnum.FIXED_LAMBDA, fixed_lambda_value=1).simulatedAnnealingSearch()
+                # reset and swap
+                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapMorpherResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
+
+                # before: check routine works properly
+                # now: check speed comparison with morpher
+                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapNewRoutineCoolingResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER, seed_algorithm_run=62932279).simulatedAnnealingSearch()
+                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapMorpherResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER, seed_algorithm_run=62932279).simulatedAnnealingSearch()
+                
+                # Check visits works
+                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapAndVisitsHeuristicCoolingResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
+
+                # Check reset T works
+                # benchmark it
+                # then algo seed 60170188 instead of 31920512
+                node_pe, pe_nodes, space_search_time = RandomNodeWithSwapCoolingResetToProbabilityDynamicSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER, seed_algorithm_run=60170188).simulatedAnnealingSearch()
+                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapCoolingResetToProbabilityDynamicLearnedSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER, seed_algorithm_run=41941511).simulatedAnnealingSearch()
+                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapFixedCoolingResetToProbabilitySma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER, seed_algorithm_run=41941511).simulatedAnnealingSearch()
+
             print("Time for simulated annealing search: " + str(space_search_time))
         case _:
             print(f"Space Search Algorithm {SSA} is not defined")
@@ -405,9 +452,11 @@ def map(dfg: DiGraph, arch: Graph, II: int, topology_degree: int, size_y: int, s
     if len(pe_nodes) == 0:
         print("Solution not found!")
         exit(0)
-        
+
     if check_solution(pe_nodes, dfg, size_y, size_x) == False:
-        print(node_pe)
+        print("Monomap Checked Solution")
+        print(f"node_pe: \n{json.dumps(node_pe, indent=4, sort_keys=True)}")
+        print(f"pe_nodes: \n{json.dumps(pe_nodes, indent=4, sort_keys=True)}")
         print("Solution is not correct")
         print()
         exit(0)
@@ -435,7 +484,7 @@ def monomorhpicSearch(dfg: DiGraph, arch: Graph, II: int, size_x: int, size_y: i
     # GM = nx.isomorphism.GraphMatcher(arch, dfg)
     GM = nx.isomorphism.GraphMatcher(arch, dfg, nm)
 
-    start = time.time()
+    start = time.process_time()
     map_id = 0
     # subgraph_monomorphisms_iter given: MRRG (arch) and DFG (dfg) and function used for matching (nm)
     # which in this case matches over the time of each node, computes all monomorphic subraphs, i.e.
@@ -464,7 +513,7 @@ def monomorhpicSearch(dfg: DiGraph, arch: Graph, II: int, size_x: int, size_y: i
             break
         map_id += 1
 
-    end = time.time()
+    end = time.process_time()
     return (node_pe, pe_nodes, end - start)
 
 
@@ -692,7 +741,7 @@ def generate_valid_schdule(graph: Graph, II: int, array_size: int, topology_degr
         # print("Scheduling solver timeout set")
         # s.set("timeout", 5*1000) # seconds * 1000
         print("Scheduling II =", II)
-        start = time.time()
+        start = time.process_time()
         KMS = kernel_mobility_schedule(graph, II)
         # for i in range(II):
         #   print(i, KMS[i])
@@ -867,11 +916,11 @@ def generate_valid_schdule(graph: Graph, II: int, array_size: int, topology_degr
             # for succ in list(graph.successors(n)):
             #    print("\tSuccessor", succ, "has mobility", getMobilityValue(KMS, succ))
 
-        end = time.time()
+        end = time.process_time()
         print("Time to generate constraints: " + str(end - start))
 
         print("Start solving...")
-        start = time.time()
+        start = time.process_time()
 
         # with open("Schedule_II_"+str(II), "w") as f:
         #    f.write(s.to_smt2())
@@ -914,7 +963,7 @@ def generate_valid_schdule(graph: Graph, II: int, array_size: int, topology_degr
                     schedule_result[cycle].append(nodeid)
         else:
             print("UNSAT")
-        end = time.time()
+        end = time.process_time()
         print("Time to find schedule: " + str(end - start))
         II += 1
 
@@ -977,6 +1026,8 @@ def main():
         '-a', action='store_true', help='Picks the II of already known benchmarks automatically, it must be used alongside -b, no parameter needed, the algorithm named passed with -b will be used\nIf the algorithm is not found in the table the computed or passed in (-i) II will be used otherwise the table will override any computed or passed in II')
     parser.add_argument(
         '-an', type=str, help='Name of the algorithm to be selected during automated benchmarks', default=None)
+    parser.add_argument(
+        '-r', type=int, help='Whether to record all the information of the run in a CSV', default=0)
     
     # Parse Arguments
     args = parser.parse_args()
@@ -1001,7 +1052,9 @@ def main():
         print("Benchmarking is defined only for Simulated Annealing, you need to set -s 1 for benchmarking to work properly.")
         exit(1)
 
-    BENCHMARK = None if not args.b else Benchmark(args.b, None, datetime.now().isoformat(timespec='seconds'), CGRA_X, CGRA_Y)
+    id = datetime.now().isoformat(timespec='seconds')
+    BENCHMARK = None if not args.b else Benchmark(args.b, None, id, CGRA_X, CGRA_Y)
+    RECORDER = None if not args.r else Recorder(args.b, None, id, CGRA_X, CGRA_Y)
 
     print(edgefile)
     print(CGRA_X, "x", CGRA_Y)
@@ -1068,7 +1121,7 @@ def main():
         exit(0)
     print("topology: ", topology_degree)
 
-    map(dfg, arch, II, topology_degree, CGRA_Y, CGRA_X, SPACE_SEARCH_ALGORITHM, BENCHMARK, args.an)
+    map(dfg, arch, II, topology_degree, CGRA_Y, CGRA_X, SPACE_SEARCH_ALGORITHM, BENCHMARK, args.an, RECORDER)
 
 
 if __name__ == "__main__":

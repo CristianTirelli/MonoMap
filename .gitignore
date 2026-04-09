@@ -10,6 +10,7 @@ acc*
 *.png
 cgra-mono-code-*
 extracted.ll
+*.csv
 
 # extra benchmarks
 extra/

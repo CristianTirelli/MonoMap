@@ -16,8 +16,11 @@
 # -a  runs automatically benchmarks for all sizes 2x2, 5x5, 10x10 and 20x20 of all algorithms
 #     found in benchmarks/extra/**/[**]/kernel1_edges
 
-# -j algoname-Xx   flag available only if autmating (-a), it skips benchmarks until it finds the one
-#                 of algoname at size XX
+# -j [algoname]-[XX]  flag available only if autmating (-a), it skips benchmarks until it finds the one
+#                     of [algoname] at size [XX]
+
+# -l [extra-label]    adds an extra label [extra-label] to the end of name of the output file, it is
+#                     helpful when monitoring multiple automatic runs of the same algorithm 
 
 F=""
 P=""
@@ -34,9 +37,12 @@ A=0
 A_SEARCH_NAME=""
 JUMP_TO=""
 
+LABEL=""
+R=0
+
 # might be better to filter arguments better by allowing multiple characters flags
 # also to align flags with monomap.py
-while getopts "f:p:x:y:d:i:s:t:ban:j:" opt; do
+while getopts "f:p:x:y:d:i:s:t:ban:j:l:r" opt; do
   case $opt in
     f) F=$OPTARG ;;
     p) P=$OPTARG ;;
@@ -50,6 +56,8 @@ while getopts "f:p:x:y:d:i:s:t:ban:j:" opt; do
     a) A=1 ;;
     n) A_SEARCH_NAME=$OPTARG ;;
     j) JUMP_TO=$OPTARG ;;
+    l) LABEL=$OPTARG ;;
+    r) R=1 ;;
     \?) echo "Invalid option -$OPTARG" >&2; exit 1 ;;
   esac
 done
@@ -131,32 +139,28 @@ run_benchmark() {
 
       for ((i = 1; i <= T; i++)); do
         echo ""$A_SEARCH_NAME" Benchmark of $algorithm_name in folder $location iteration $i/$T for size "$size"x"$size""
-        python3 -u mapper/monomap.py -path "$location/kernel1_edges" -x "$size" -y "$size" -d "$d" -i "$ii" -s "$s" -b "$algorithm_name" -a -an "$A_SEARCH_NAME" > "cgra-mono-code-a-$A_SEARCH_NAME"
+        python3 -u mapper/monomap.py -path "$location/kernel1_edges" -x "$size" -y "$size" -d "$d" -i "$ii" -s "$s" -b "$algorithm_name" -a -an "$A_SEARCH_NAME" -r "$R" > "cgra-mono-code-a-$A_SEARCH_NAME$LABEL"
       done
     done
   elif [ "$benchmark" -eq 1 ]; then
     if [ "$folder_instead_of_file_path" -eq 1 ]; then
-      for ((i = 1; i <= T; i++)); do
-        echo "Benchmark of $algorithm_name in folder $location iteration $i/$T"
-        python3 -u mapper/monomap.py -path "$location/kernel1_edges" -x "$x" -y "$y" -d "$d" -i "$ii" -s "$s" -b "$algorithm_name" > "cgra-mono-code-$algorithm_name"
-      done
+      echo "Benchmark of $algorithm_name in folder $location"
+      python3 -u mapper/monomap.py -path "$location/kernel1_edges" -x "$x" -y "$y" -d "$d" -i "$ii" -s "$s" -b "$algorithm_name" -r "$R" > "cgra-mono-code-$algorithm_name$LABEL"
     else
-      for ((i = 1; i <= T; i++)); do
-        # path is a complete file path
-        echo "Benchmark of $algorithm_name found at $location iteration $i/$T"
-        python3 -u mapper/monomap.py -path "$location" -x "$x" -y "$y" -d "$d" -i "$ii" -s "$s" -b "$algorithm_name" > "cgra-mono-code-$algorithm_name"
-      done
+      # path is a complete file path
+      echo "Benchmark of $algorithm_name found at $location"
+      python3 -u mapper/monomap.py -path "$location" -x "$x" -y "$y" -d "$d" -i "$ii" -s "$s" -b "$algorithm_name" -r "$R" > "cgra-mono-code-$algorithm_name$LABEL"
     fi
   else
     # only single run can have path instead of folder
     if [ "$folder_instead_of_file_path" -eq 1 ]; then
       # path is a folder where kernel1_edges file (dfg edges graph) is found
       echo "Running $algorithm_name in folder $location"
-      python3 -u mapper/monomap.py -path "$location/kernel1_edges" -x "$x" -y "$y" -d "$d" -i "$ii" -s "$s" > "cgra-mono-code-$algorithm_name"
+      python3 -u mapper/monomap.py -path "$location/kernel1_edges" -x "$x" -y "$y" -d "$d" -i "$ii" -s "$s" -r "$R" > "cgra-mono-code-$algorithm_name$LABEL"
     else
       # path is a complete file path
       echo "Running $algorithm_name found at $location"
-      python3 -u mapper/monomap.py -path "$location" -x "$x" -y "$y" -d "$d" -i "$ii" -s "$s" > "cgra-mono-code-$algorithm_name"
+      python3 -u mapper/monomap.py -path "$location" -x "$x" -y "$y" -d "$d" -i "$ii" -s "$s" -r "$R" > "cgra-mono-code-$algorithm_name$LABEL"
     fi
   fi
 }

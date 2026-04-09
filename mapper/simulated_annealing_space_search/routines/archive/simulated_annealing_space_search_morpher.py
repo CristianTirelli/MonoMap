@@ -1,9 +1,12 @@
+import math
 import random
+import time
 from dataclasses import dataclass, field
 
 from networkx import Graph, shortest_path_length
 
 from benchmark import Benchmark
+from plots import saveFigMappingsCGRA, saveFigTemperature
 
 # ALGORITHM:    We have a max cap of iterations 1_000_000 and a temperature that is detached from the main loop,
 #               until we reach a solution, we complete all iterations or we timeout we continue the search.
@@ -16,8 +19,8 @@ from benchmark import Benchmark
 # COST:         The cost function simply calculates the Manhattan distance of nodes that do not resespect dependencies
 
 @dataclass
-class SimulatedAnnealingTabuSpaceSearchMorpher:
-    TEMPERATURE_STRATEGY_ID: str = field(default="MORPHER-SMA-BEST-AND-MAX-CAP-TABU_", init=False)
+class SimulatedAnnealingSpaceSearchMorpher:
+    TEMPERATURE_STRATEGY_ID: str = field(default="MORPHER_", init=False)
 
     # Runtime variables
     # holds the current best solution
@@ -26,9 +29,6 @@ class SimulatedAnnealingTabuSpaceSearchMorpher:
     cost: int = field(default=0, init=False)
 
     temperature: float = field(default=0.0, init=False)
-
-    cost_sma_slow: float = field(default=0.0, init=False)
-    cost_sma_fast: float = field(default=0.0, init=False)
 
     ## COSTANTS ##
     # input specific data
@@ -43,8 +43,7 @@ class SimulatedAnnealingTabuSpaceSearchMorpher:
 
     # iterations and timeout
     MAX_ITERATIONS: int = field(default=1_000_000, init=False)
-    TIME_OUT: int = field(default=60 * 50, init=False)
-    # TIME_OUT: int = field(default=4000, init=False)
+    TIME_OUT: int = field(default=4000, init=False)
 
     # temperature
     START_TEMPERATURE: int = field(default=100, init=False)
@@ -217,7 +216,142 @@ class SimulatedAnnealingTabuSpaceSearchMorpher:
 
     # Hybrid: Overall Temperature and Simulated Annealing search is shared
     def simulatedAnnealingSearch(self) -> tuple[dict[int, int],  dict[int, list[int]], float]:
-        """
-        Tabu specific SA search is overridden by strategy
-        """
-        raise NotImplementedError
+        print("*** START SA ROUTINE ***\n")
+        start = time.process_time()
+
+        self.temperature = self.START_TEMPERATURE
+
+        # Generate starting random solution and evaluate it
+        self.random_sol_generator()
+        self.sol_cost = self.cost_space_solution(self.node_pe)
+
+        # Search Data
+        costs = []
+        temperatures = []
+
+        acceptance = 0
+        items = 1
+
+        iterations = 0
+        while self.sol_cost != 0 and iterations < self.MAX_ITERATIONS:
+            running_time = time.process_time() - start
+
+            if self.TIME_OUT < running_time:
+                print("TIMED OUT")
+                break
+
+            # add best pe nodes here
+            curr_node_pe, curr_pe_nodes = self.neighbour_sol_generator()
+            c = self.cost_space_solution(curr_node_pe)
+
+            if c < self.sol_cost:
+                self.node_pe = curr_node_pe
+                self.pe_nodes = curr_pe_nodes
+                self.sol_cost = c
+
+                acceptance += 1
+            else:
+                # apply boltzman
+                delta_E = c - self.sol_cost
+                P = math.exp(- delta_E / self.temperature)
+                rnd = random.random()
+
+                if rnd < P:
+                    self.node_pe = curr_node_pe
+                    self.pe_nodes = curr_pe_nodes
+                    self.sol_cost = c
+
+                    acceptance += 1
+
+            if items >= self.ITEMS_PER_TEMPERATRE:
+                # # track what we keep from these items within the single temperature step
+                costs.append(self.sol_cost)
+                temperatures.append(self.temperature)
+
+                acceptance_rate = acceptance / self.ITEMS_PER_TEMPERATRE
+
+                print(f"Running for: {int(running_time):4d}s Acceptance rate: {acceptance_rate:2.2f}  Cost: {self.sol_cost:6d} Temperature: {self.temperature:4.4f}", end='\r')
+
+                items = 1
+                acceptance = 0
+
+                if self.temperature > self.FREEZING_TEMPERATURE:
+                    self.temperature = self.updateTemperature(self.temperature, acceptance_rate)
+                iterations += 1
+            else:
+                items += 1
+        end = time.process_time()
+        total_time = end - start
+
+        print("\n*** END SA ROUTINE ***\n")
+        print(f"End solution cost: {self.sol_cost}")
+
+        # collect data for:
+        # number of nodes that are positioned incorrectly and correctly
+        # number for both and list for incorrect positioning
+        incorrect_source_destination_nodes: dict = {}
+
+        # node and relative distance cost
+        incorrect_node_cost: dict = {}
+
+        for e in self.dfg.edges:
+            source = e[0]
+            destination = e[1]
+
+            ps = self.node_pe[source]
+            pd = self.node_pe[destination]
+
+            if not self.isConnected(pd, ps, self.size_y, self.size_x):
+                inc = self.pe_distance(self.arch, pd, ps) ** 2
+                incorrect_node_cost[source] = inc
+                incorrect_node_cost[destination] = inc
+                incorrect_source_destination_nodes[source] = destination
+        
+        # number of incorrectly positioned nodes
+        incorrectly_positioned_nodes = len(incorrect_source_destination_nodes) * 2
+
+        # Plot search data
+        if self.BENCHMARK:
+            chart_file_path: str = ""
+            try:
+                chart_file_path = saveFigTemperature(
+                    iterations,
+                    temperatures,
+                    costs,
+                    self.BENCHMARK.get_directory_path_str(),
+                    self.BENCHMARK.sa_algorithm_type,
+                    self.BENCHMARK.id
+                )
+            except Exception as e:
+                print(f"Exception saving plot: {e}")
+
+            configuration_file_path = saveFigMappingsCGRA(
+                self.node_pe,
+                self.schedule,
+                self.size_x,
+                self.size_y,
+                self.BENCHMARK.get_directory_path_str(),
+                self.BENCHMARK.sa_algorithm_type,
+                self.BENCHMARK.id
+            )
+
+            self.BENCHMARK.save_results(
+                total_time,
+                self.sol_cost,
+                iterations,
+                chart_file_path,
+                configuration_file_path,
+                len(list(self.dfg)) - incorrectly_positioned_nodes,
+                incorrectly_positioned_nodes,
+                incorrect_source_destination_nodes,
+                incorrect_node_cost
+            )
+        else:
+            try:
+                saveFigTemperature(iterations, temperatures, costs, [], [])
+            except Exception as e:
+                print(f"Exception saving plot: {e}")
+            saveFigMappingsCGRA(self.node_pe, self.schedule, self.size_x, self.size_y)
+        
+        print("\n\n\n")
+        return (self.node_pe, self.pe_nodes, total_time)

@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 import random
 
-from simulated_annealing.simulated_annealing_space_search_morpher_warmup_sma import SimulatedAnnealingSpaceSearchMorpherWarmupSma
 
 
 # COST:         The cost is computed by looping over all dependency edges and check if they are respected,
@@ -17,7 +16,7 @@ from simulated_annealing.simulated_annealing_space_search_morpher_warmup_sma imp
 
 
 @dataclass
-class WorstPositionedNode(SimulatedAnnealingSpaceSearchMorpherWarmupSma):
+class WorstPositionedNode():
     STRATEGY_ID: str = field(default=SimulatedAnnealingSpaceSearchMorpherWarmupSma.TEMPERATURE_STRATEGY_ID + "WORST-POSITIONED-NODE", init=False)
 
     worst_nodes: list[int] = field(default_factory=list, init=False)

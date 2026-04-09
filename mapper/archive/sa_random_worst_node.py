@@ -286,7 +286,7 @@ def simulatedAnnealingSearch(schedule: dict[str, list[int]], dfg: DiGraph, arch:
     # see Q: at check_solution
 
     print("*** START SA ROUTINE ***\n")
-    start = time.time()
+    start = time.process_time()
 
     # Generate starting random solution
     curr_node_pe, curr_pe_nodes = random_sol_generator(schedule, size_x, size_y)
@@ -340,7 +340,7 @@ def simulatedAnnealingSearch(schedule: dict[str, list[int]], dfg: DiGraph, arch:
             items += 1
 
         # print()
-    end = time.time()
+    end = time.process_time()
 
     print("\n*** END SA ROUTINE ***\n")
     print(f"End solution cost: {sol_cost}")

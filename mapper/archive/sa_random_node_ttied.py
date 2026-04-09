@@ -326,7 +326,7 @@ def simulatedAnnealingSearch(schedule: dict[str, list[int]], dfg: DiGraph, arch:
     SMA_COST_5 = IntegerCircularBuffer(5)
 
     print("*** START SA ROUTINE ***\n")
-    start = time.time()
+    start = time.process_time()
 
     # Generate starting random solution
     curr_node_pe, curr_pe_nodes = random_sol_generator(schedule, size_x, size_y)
@@ -342,7 +342,7 @@ def simulatedAnnealingSearch(schedule: dict[str, list[int]], dfg: DiGraph, arch:
 
     # while FREEZING_TEMPERATURE < TEMPERATURE and check_solution(pe_nodes, dfg, size_y, size_x) == False:
     while sol_cost != 0 and iterations < MAX_ITERATIONS:
-        if TIME_OUT < time.time() - start:
+        if TIME_OUT < time.process_time() - start:
             print("TIMED OUT")
             break
         # print(f"T: {TEMPERATURE}")
@@ -403,7 +403,7 @@ def simulatedAnnealingSearch(schedule: dict[str, list[int]], dfg: DiGraph, arch:
 
         iterations += 1
         # print()
-    end = time.time()
+    end = time.process_time()
     total_time = end - start
 
     print("\n*** END SA ROUTINE ***\n")

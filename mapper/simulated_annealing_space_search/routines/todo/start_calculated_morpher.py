@@ -8,16 +8,26 @@ from networkx import Graph, shortest_path_length
 from benchmark import Benchmark
 from plots import saveFigTemperature
 
+# TODO unconnected old implementation class
+
 # ALGORITHM:    We have a max cap of iterations 1_000_000 and a temperature that is detached from the main loop,
 #               until we reach a solution, we complete all iterations or we timeout we continue the search.
 
-# TEMPERATURE:  Temperature is cooled by 0.9 at each iteration
+# START:        We compute the first solution by an heuristic to reduce the starting cost as much as possible
+#               we place operations on vicinity PEs of dependent PEs, if there are overlapping (two operations
+#               scheduled) on the same PE, we move one of them away in a neighbouring available PE so that the
+#               cost is minimized
+
+# TEMPERATURE:  Temperature moves down following Morpher cooling schedule, and SMA: 201 and 5, if 201 reaches 5
+#               we warm up following a schedule: += 0.001 / math.log(warming_up_step + math.e) then if we find a
+#               better solution or we reach a cap of 1000 times the freezing temperature we stop warming up and
+#               continue cooling
 
 # COST:         The cost function simply calculates the Manhattan distance of nodes that do not resespect dependencies
 
 @dataclass
-class SimulatedAnnealingSpaceSearchCooling:
-    TEMPERATURE_STRATEGY_ID: str = field(default="COOLING_", init=False)
+class StartCalculatedMorpher:
+    TEMPERATURE_STRATEGY_ID: str = field(default="MORPHER-SMA-BEST-AND-MAX-CAP-COMPUTED-START_", init=False)
 
     # Runtime variables
     # holds the current best solution
@@ -43,15 +53,15 @@ class SimulatedAnnealingSpaceSearchCooling:
 
     # iterations and timeout
     MAX_ITERATIONS: int = field(default=1_000_000, init=False)
-    TIME_OUT: int = field(default=60 * 10, init=False)
+    TIME_OUT: int = field(default=60 * 30, init=False)
     # TIME_OUT: int = field(default=4000, init=False)
 
     # temperature
     START_TEMPERATURE: int = field(default=100, init=False)
     FREEZING_TEMPERATURE: float = field(default=0.01, init=False)
-    TEMPERATURE_REFUEL_LIMIT: float = field(default=3, init=False)
+    TEMPERATURE_REFUEL_LIMIT: float = field(default=10, init=False)
 
-    ITEMS_PER_TEMPERATRE: int = field(default=50, init=False)
+    ITEMS_PER_TEMPERATRE: int = field(default=5, init=False)
 
     # SMA
     SMA_SLOW_ITEMS: float = field(default=201, init=False)
@@ -60,38 +70,54 @@ class SimulatedAnnealingSpaceSearchCooling:
     EPSILON: float = field(default=0.001, init=False)
 
     # Shared functions
-    def random_sol_generator(self):
+    def start_sol_generator(self):
         """
         Random solution generator.
 
         It assumes that the schedule does not schedule more instructions than available PEs.
         For each schedule it positions instructions at random in available PEs.
         """
-        node_pe: dict[int, int] = {}
-        pe_nodes: dict[int, list[int]] = {}
+        curr_node_pe: dict[int, int] = {}
+        curr_pe_nodes: dict[int, list[int]] = {}
 
         size = self.size_x * self.size_y
 
+        # invece di andare a caso guardare il neghbour con la funzione costo e
+        # scegliere la posizione che minimizza il costo
+
+        # Very naive: we place all pes on the same tile for each schedule
+        middle = size // 2
+
         for t in self.schedule:
-            available_pes = [i for i in range(size)]
+            for n in self.schedule[t]:
+                curr_node_pe[n] = middle
 
-            for node in self.schedule[t]:
-                pe = random.choice(available_pes)
-                
-                if pe not in pe_nodes:
-                    pe_nodes[pe] = []
-                pe_nodes[pe].append(node)
+        def is_node_overlapping(n: int, curr_node_pe: dict[int, int], neighbours: list[int]) -> bool:
+            for nei in neighbours:
+                if n != nei and curr_node_pe[n] == curr_node_pe[nei]:
+                    return True
+            return False
 
-                if node not in node_pe:
-                    node_pe[node] = pe
-                else:
-                    print(f"should not happend, node: {node}, pe: {pe}")
+        # at random for each schedule we chose one of the adjacent PEs we continue until
+        # all operations are on a single pe
+        for t in self.schedule:
+            for n in self.schedule[t]:
+                while is_node_overlapping(n, curr_node_pe, self.schedule[t]):
+                    cnpe = curr_node_pe[n]
+                    adjacent_pes = [pe for pe in [cnpe + 1, cnpe - 1, cnpe + self.size_x, cnpe - self.size_x] if 0 <= pe < size]
 
-                available_pes.remove(pe)
+                    new_pe = random.choice(adjacent_pes)
+                    curr_node_pe[n] = new_pe
+
+        # build curr_pe_nodes
+        for n, pe in curr_node_pe.items():
+            if pe not in curr_pe_nodes:
+                curr_pe_nodes[pe] = []
+            curr_pe_nodes[pe].append(n)
 
         # apply to main variables
-        self.node_pe = node_pe
-        self.pe_nodes = pe_nodes
+        self.node_pe = curr_node_pe
+        self.pe_nodes = curr_pe_nodes
 
     @staticmethod
     def pe_distance(arch: Graph, pe1: int, pe2: int) -> int:
@@ -218,12 +244,12 @@ class SimulatedAnnealingSpaceSearchCooling:
     # Hybrid: Overall Temperature and Simulated Annealing search is shared
     def simulatedAnnealingSearch(self) -> tuple[dict[int, int],  dict[int, list[int]], float]:
         print("*** START SA ROUTINE ***\n")
-        start = time.time()
+        start = time.process_time()
 
         self.temperature = self.START_TEMPERATURE
 
         # Generate starting random solution and evaluate it
-        self.random_sol_generator()
+        self.start_sol_generator()
         self.sol_cost = self.cost_space_solution(self.node_pe)
 
         # Search Data
@@ -239,13 +265,12 @@ class SimulatedAnnealingSpaceSearchCooling:
         acceptance = 0
         items = 0
 
-        warmup_cost: int
         warming_up = False
         warming_up_step = 1
 
         iterations = 0
         while self.sol_cost != 0 and iterations < self.MAX_ITERATIONS:
-            running_time = time.time() - start
+            running_time = time.process_time() - start
 
             if self.TIME_OUT < running_time:
                 print("TIMED OUT")
@@ -300,25 +325,24 @@ class SimulatedAnnealingSpaceSearchCooling:
                     self.temperature += 0.001 / math.log(warming_up_step + math.e)
 
                     # based on temperature cap
-                    if self.temperature >= self.TEMPERATURE_REFUEL_LIMIT:
+                    if self.temperature + self.EPSILON >= self.TEMPERATURE_REFUEL_LIMIT:
                         warming_up = False
 
                     # based on better solutions found
-                    if self.sol_cost < warmup_cost:
+                    if self.cost_sma_fast + self.EPSILON < self.cost_sma_slow:
                         warming_up = False
                     warming_up_step += 1
                 else:
                     if self.cost_sma_fast < self.cost_sma_slow and self.cost_sma_slow < self.cost_sma_fast + self.EPSILON and acceptance_rate < 0.1:
                         warming_up = True
                         warming_up_step = 1
-                        warmup_cost = self.sol_cost
 
                     if self.temperature > self.FREEZING_TEMPERATURE:
                         self.temperature = self.updateTemperature(self.temperature, acceptance_rate)
                 iterations += 1
             else:
                 items += 1
-        end = time.time()
+        end = time.process_time()
         total_time = end - start
 
         print("\n*** END SA ROUTINE ***\n")
@@ -338,15 +362,12 @@ class SimulatedAnnealingSpaceSearchCooling:
                     costs_sma_slow=costs_sma_slow,
                     costs_sma_fast=costs_sma_fast
                 )
-            except Exception as e:
-                print(f"Exception saving plot: {e}")
+            except:
+                pass
 
             self.BENCHMARK.save_results(total_time, self.sol_cost, iterations, file_path)
         else:
-            try:
-                saveFigTemperature(iterations, temperatures, costs, costs_sma_slow, costs_sma_fast)
-            except Exception as e:
-                print(f"Exception saving plot: {e}")
+            saveFigTemperature(iterations, temperatures, costs, costs_sma_slow, costs_sma_fast)
         
         print("\n\n\n")
         return (self.node_pe, self.pe_nodes, total_time)
