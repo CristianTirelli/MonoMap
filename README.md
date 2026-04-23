@@ -54,3 +54,17 @@ By default, the code will be compiled for a 4x4 CGRA. To specify a different CGR
 The output of the compiler is a file called `cgra-mono-code-acc`, which includes various debug information and the mapping result.
 
 
+## Citation
+
+If you use this work, please cite:
+
+```bibtex
+@inproceedings{tirelli2023sat,
+  title={SAT-MapIt: A SAT-based modulo scheduling mapper for coarse grain reconfigurable architectures},
+  author={Tirelli, Cristian and Ferretti, Lorenzo and Pozzi, Laura},
+  booktitle={2023 Design, Automation \& Test in Europe Conference \& Exhibition (DATE)},
+  pages={1--6},
+  year={2023},
+  organization={IEEE}
+}
+```
