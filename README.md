@@ -59,12 +59,13 @@ The output of the compiler is a file called `cgra-mono-code-acc`, which includes
 If you use this work, please cite:
 
 ```bibtex
-@inproceedings{tirelli2023sat,
-  title={SAT-MapIt: A SAT-based modulo scheduling mapper for coarse grain reconfigurable architectures},
-  author={Tirelli, Cristian and Ferretti, Lorenzo and Pozzi, Laura},
-  booktitle={2023 Design, Automation \& Test in Europe Conference \& Exhibition (DATE)},
-  pages={1--6},
-  year={2023},
+@inproceedings{tirelli2025monomorphism,
+  title={Monomorphism-based cgra mapping via space and time decoupling},
+  author={Tirelli, Cristian and Otoni, Rodrigo and Pozzi, Laura},
+  booktitle={2025 Design, Automation \& Test in Europe Conference (DATE)},
+  pages={1--7},
+  year={2025},
   organization={IEEE}
 }
+
 ```
