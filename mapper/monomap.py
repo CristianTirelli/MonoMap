@@ -34,77 +34,121 @@ from datetime import datetime
 
 from plots import saveFigDFG
 
+MODEL_NUMBER = 4
 
-from simulated_annealing_space_search.routines.strategies.random_node import RandomNodeCoolingResetSma, RandomNodeMorpherResetSma
+# Different model numbers but always equal to different Ts set
+# MODEL_NUMBER = 2
+# MODEL_NUMBER = 6
+# MODEL_NUMBER = 8
+
+
+from simulated_annealing_space_search.builder import RandomNodeCoolingResetSma
+from simulated_annealing_space_search.builder import RandomNodeMorpherResetSma
+
 def RandomNodeCoolingResetSma_routine(
     # Common, needed Input values to all strategies
     schedule: dict[str, list[int]],
     size_x: int,
     size_y: int,
+    directed_dfg: DiGraph,
     dfg: Graph,
     arch: Graph,
     BENCHMARK: Benchmark,
     RECORDER: Recorder,
     **kwargs: dict):
-    return RandomNodeCoolingResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
+    return RandomNodeCoolingResetSma(schedule, size_x, size_y, directed_dfg, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
 
 def RandomNodeMorpherResetSma_routine(
     # Common, needed Input values to all strategies
     schedule: dict[str, list[int]],
     size_x: int,
     size_y: int,
+    directed_dfg: DiGraph,
     dfg: Graph,
     arch: Graph,
     BENCHMARK: Benchmark,
     RECORDER: Recorder,
     **kwargs: dict):
-    return RandomNodeMorpherResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
+    return RandomNodeMorpherResetSma(schedule, size_x, size_y, directed_dfg, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
 
-from simulated_annealing_space_search.routines.strategies.random_node_with_swap import RandomNodeWithSwapAndVisitsHeuristicCoolingResetSma, RandomNodeWithSwapNewRoutineCoolingResetSma, RandomNodeWithSwapMorpherResetSma
-def RandomNodeWithSwapAndVisitsHeuristicCoolingResetSma_routine(
-    schedule: dict[str, list[int]],
-    size_x: int,
-    size_y: int,
-    dfg: Graph,
-    arch: Graph,
-    BENCHMARK: Benchmark,
-    RECORDER: Recorder,
-    **kwargs: dict):
-    return RandomNodeWithSwapAndVisitsHeuristicCoolingResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
+
+from simulated_annealing_space_search.builder import  RandomNodeWithSwapNewRoutineCoolingResetSma
+from simulated_annealing_space_search.builder import  RandomNodeWithSwapMorpherResetSma
 
 def RandomNodeWithSwapCoolingResetSma_routine(
     schedule: dict[str, list[int]],
     size_x: int,
     size_y: int,
+    directed_dfg: DiGraph,
     dfg: Graph,
     arch: Graph,
     BENCHMARK: Benchmark,
     RECORDER: Recorder,
     **kwargs: dict):
-    return RandomNodeWithSwapNewRoutineCoolingResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
+    return RandomNodeWithSwapNewRoutineCoolingResetSma(schedule, size_x, size_y, directed_dfg, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
 
 def RandomNodeWithSwapMorpherResetSma_routine(
     schedule: dict[str, list[int]],
     size_x: int,
     size_y: int,
+    directed_dfg: DiGraph,
     dfg: Graph,
     arch: Graph,
     BENCHMARK: Benchmark,
     RECORDER: Recorder,
     **kwargs: dict):
-    return RandomNodeWithSwapMorpherResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
+    return RandomNodeWithSwapMorpherResetSma(schedule, size_x, size_y, directed_dfg, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
 
-from simulated_annealing_space_search.routines.strategies.random_node_with_swap import RandomNodeWithSwapCoolingResetToProbabilityDynamicSma, RandomNodeWithSwapCoolingResetToProbabilityDynamicLearnedSma, RandomNodeWithSwapFixedCoolingResetToProbabilitySma
+
+# starts
+from simulated_annealing_space_search.builder import RandomNodeWithSwapCoolingResetToProbabilityDynamicBestCostSmaGreedyStart, RandomNodeWithSwapCoolingResetToProbabilityDynamicBestCostSma
+
+def RandomNodeWithSwapCoolingResetToProbabilityDynamicBestCostSmaGreedyStart_10TCOEFF_randomstartseed_routine(
+    schedule: dict[str, list[int]],
+    size_x: int,
+    size_y: int,
+    directed_dfg: DiGraph,
+    dfg: Graph,
+    arch: Graph,
+    BENCHMARK: Benchmark,
+    RECORDER: Recorder,
+    **kwargs: dict):
+    return RandomNodeWithSwapCoolingResetToProbabilityDynamicBestCostSmaGreedyStart(schedule, size_x, size_y, directed_dfg, dfg, arch, BENCHMARK, RECORDER, START_TEMPERATURE_COEFF=10, seed_start_configuration=random.randint(0, 2**16)).simulatedAnnealingSearch()
+
+def RandomNodeWithSwapCoolingResetToProbabilityDynamicBestCostSma_10TCOEFF_randomstartseed_routine(
+    schedule: dict[str, list[int]],
+    size_x: int,
+    size_y: int,
+    directed_dfg: DiGraph,
+    dfg: Graph,
+    arch: Graph,
+    BENCHMARK: Benchmark,
+    RECORDER: Recorder,
+    **kwargs: dict):
+    return RandomNodeWithSwapCoolingResetToProbabilityDynamicBestCostSma(schedule, size_x, size_y, directed_dfg, dfg, arch, BENCHMARK, RECORDER, START_TEMPERATURE_COEFF=10, seed_start_configuration=random.randint(0, 2**16)).simulatedAnnealingSearch()
+
+
+# visits heuristic
+from simulated_annealing_space_search.builder import  RandomNodeWithSwapAndVisitsHeuristicCoolingResetSma
+
+def RandomNodeWithSwapAndVisitsHeuristicCoolingResetSma_routine(
+    schedule: dict[str, list[int]],
+    size_x: int,
+    size_y: int,
+    directed_dfg: DiGraph,
+    dfg: Graph,
+    arch: Graph,
+    BENCHMARK: Benchmark,
+    RECORDER: Recorder,
+    **kwargs: dict):
+    return RandomNodeWithSwapAndVisitsHeuristicCoolingResetSma(schedule, size_x, size_y, directed_dfg, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
+
 
 # algo name -> routine to construct and return CGRA solution tuple: tuple[node_pe, pe_noed, time]
 AUTOMATED_SPACE_SEARCH_STRATEGIES = {
-    # TODO benchmark
-    "random-cooling-reset": RandomNodeCoolingResetSma_routine,
-    # new routine add to dict name
-    "random-swap-cooling-reset-new-routine": RandomNodeWithSwapCoolingResetSma_routine,
-
-    "random-morpher-reset-reset-sma": RandomNodeMorpherResetSma_routine,
-    "random-swap-morpher-reset-reset-sma": RandomNodeWithSwapMorpherResetSma_routine,
+    # benchmark with different initial configurations
+    "swap-dyn-bestc-greedys": RandomNodeWithSwapCoolingResetToProbabilityDynamicBestCostSmaGreedyStart_10TCOEFF_randomstartseed_routine,
+    "swap-dyn-bestc-random": RandomNodeWithSwapCoolingResetToProbabilityDynamicBestCostSma_10TCOEFF_randomstartseed_routine,
 
     # TODO implement
     "random-cooling-visits-reset": RandomNodeWithSwapAndVisitsHeuristicCoolingResetSma_routine
@@ -133,6 +177,8 @@ II_BENCHMARKS_TABLE = {
 
  ("cfd", 2, 2): -1,
  ("cfd", 5, 5): 3,
+
+ # Put it as 3: TO in paper does not report II
  ("cfd", 10, 10): -1,
  ("cfd", 20, 20): -1,
 
@@ -158,6 +204,8 @@ II_BENCHMARKS_TABLE = {
 
  ("hotspot3D", 2, 2): 17,
  ("hotspot3D", 5, 5): 6,
+
+ # Put it as 6: TO in paper does not report II
  ("hotspot3D", 10, 10): -1,
  ("hotspot3D", 20, 20): -1,
 
@@ -411,34 +459,24 @@ def map(dfg: DiGraph, arch: Graph, II: int, topology_degree: int, size_y: int, s
                     schedule,
                     size_x,
                     size_y,
+                    directed_dfg,
                     dfg,
                     arch,
                     BENCHMARK,
                     RECORDER,
-                    directed_dfg=directed_dfg
                 )
             else:
-                # time checks
-                # node_pe, pe_nodes, space_search_time = RandomNodeCoolingResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER, seed_start_configuration=12345, seed_algorithm_run=59226991).simulatedAnnealingSearch()
-                # node_pe, pe_nodes, space_search_time = RandomNodeCoolingResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER, seed_start_configuration=12345, seed_algorithm_run=40226105).simulatedAnnealingSearch()
+                # node_pe, pe_nodes, space_search_time = RandomNodeCoolingResetSma(schedule, size_x, size_y, directed_dfg, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
+                # node_pe, pe_nodes, space_search_time = RandomNodeMorpherResetSma(schedule, size_x, size_y, directed_dfg, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
+                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapNewRoutineCoolingResetSma(schedule, size_x, size_y, directed_dfg, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
+                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapMorpherResetSma(schedule, size_x, size_y, directed_dfg, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
 
-                # reset and swap
-                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapMorpherResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
-
-                # before: check routine works properly
-                # now: check speed comparison with morpher
-                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapNewRoutineCoolingResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER, seed_algorithm_run=62932279).simulatedAnnealingSearch()
-                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapMorpherResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER, seed_algorithm_run=62932279).simulatedAnnealingSearch()
+                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapCoolingResetToProbabilityDynamicBestCostSmaGreedyStart(schedule, size_x, size_y, directed_dfg, dfg, arch, BENCHMARK, RECORDER, seed_algorithm_run=60543785).simulatedAnnealingSearch()
+                node_pe, pe_nodes, space_search_time = RandomNodeWithSwapCoolingResetToProbabilityDynamicBestCostSmaGreedyStart(schedule, size_x, size_y, directed_dfg, dfg, arch, BENCHMARK, RECORDER, seed_algorithm_run=42381215).simulatedAnnealingSearch()
                 
-                # Check visits works
-                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapAndVisitsHeuristicCoolingResetSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
+                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapCoolingResetToProbabilityDynamicBestCostSmaRestartRandomStart(schedule, size_x, size_y, directed_dfg, dfg, arch, BENCHMARK, RECORDER).simulatedAnnealingSearch()
 
-                # Check reset T works
-                # benchmark it
-                # then algo seed 60170188 instead of 31920512
-                node_pe, pe_nodes, space_search_time = RandomNodeWithSwapCoolingResetToProbabilityDynamicSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER, seed_algorithm_run=60170188).simulatedAnnealingSearch()
-                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapCoolingResetToProbabilityDynamicLearnedSma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER, seed_algorithm_run=41941511).simulatedAnnealingSearch()
-                # node_pe, pe_nodes, space_search_time = RandomNodeWithSwapFixedCoolingResetToProbabilitySma(schedule, size_x, size_y, dfg, arch, BENCHMARK, RECORDER, seed_algorithm_run=41941511).simulatedAnnealingSearch()
+        
 
             print("Time for simulated annealing search: " + str(space_search_time))
         case _:
@@ -945,7 +983,7 @@ def generate_valid_schdule(graph: Graph, II: int, array_size: int, topology_degr
                     for args in itertools.product(*arg_domains):
                         block.append(z3_decl(*args) != m.eval(z3_decl(*args)))
                 s.add(Or(block))
-                if model_number == 4:  # 4
+                if model_number == MODEL_NUMBER:  # 4
                     break
 
             valid_schedule = True

@@ -22,6 +22,11 @@
 # -l [extra-label]    adds an extra label [extra-label] to the end of name of the output file, it is
 #                     helpful when monitoring multiple automatic runs of the same algorithm 
 
+# -0 [algoname]       omits completely a benchmark when running automated
+
+# -I [size]           runs infintely looping over benchmarks when running automated, all of them if [size] is snot specified, else only benchmarks of size [size]
+
+
 F=""
 P=""
 
@@ -40,9 +45,13 @@ JUMP_TO=""
 LABEL=""
 R=0
 
+OMIT_BENCHMARK=""
+INFINITE=0
+INFINITE_SIZE=0
+
 # might be better to filter arguments better by allowing multiple characters flags
 # also to align flags with monomap.py
-while getopts "f:p:x:y:d:i:s:t:ban:j:l:r" opt; do
+while getopts "f:p:x:y:d:i:s:t:ban:j:l:ro:I:" opt; do
   case $opt in
     f) F=$OPTARG ;;
     p) P=$OPTARG ;;
@@ -58,6 +67,9 @@ while getopts "f:p:x:y:d:i:s:t:ban:j:l:r" opt; do
     j) JUMP_TO=$OPTARG ;;
     l) LABEL=$OPTARG ;;
     r) R=1 ;;
+    o) OMIT_BENCHMARK=$OPTARG ;;
+    I) INFINITE=1
+       INFINITE_SIZE=$OPTARG ;;
     \?) echo "Invalid option -$OPTARG" >&2; exit 1 ;;
   esac
 done
@@ -76,6 +88,12 @@ if [ -n "$F" ] && [ -n "$P" ]; then
 elif [ -z "$F" ] && [ -z "$P" ] && [ "$A" -eq 0 ]; then
 	echo "One of \"-f\" or \"-p\" or \"-a\" is needed"
 	exit 1
+fi
+
+# both sump and infinite should not be defined at the same time
+if [ -n "$JUMP_TO" ] && [ "$INFINITE" -eq 1 ]; then
+  echo "Usage Error: -j (jump) and -I (infinite) cannot be used at the same time"
+  exit 1
 fi
 
 ADD_FLAGS=""
@@ -124,6 +142,10 @@ run_benchmark() {
 
     # for automated we make it run 10 times with different sizes:
     for size in 2 5 10 20; do
+      if [ "$INFINITE_SIZE" -ne 0 ] && [ "$size" -ne "$INFINITE_SIZE" ]; then
+        continue
+      fi
+
       if [[ "$JUMPING" -eq 1 && "$jumping_to_size" -ne "$size" ]]; then
         continue
       else
@@ -191,52 +213,66 @@ if [ "$A" -eq 1 ]; then
     fi
   fi
 
-  for folder in "$path"/*; do
-    if [ -d "$folder" ]; then
-      # run kernel edges if found
-      # s == 1 as benchmark is defined only to SA
-      if [ -f "$folder/kernel1_edges" ]; then
-        # if kernel1_edges is found execute
-        algorithm_name=$(basename "$folder")
-
-        # try to skip algo until the one to jump to is found
-        if [[ "$JUMPING" -eq 1 && "$JUMP_TO_NAME" != "$algorithm_name" ]]; then
-          continue
-        else
-          JUMPING=0
-        fi
-
-        run_benchmark "$algorithm_name" "$folder" "$X" "$Y" "$D" "$II" 1 0 1 0 "$JUMP_TO_SIZE"
-      else
-        # check for folders of folders (sha case)
-        for subfolder in "$folder"/*; do
-          # if folder has kernel edges we execute it
-          if [ -d "$subfolder" ] && [ -f "$subfolder/kernel1_edges" ]; then
-            algorithm_name=$(basename "$subfolder")
-
-            # try to skip algo until the one to jump to is found
-            if [[ "$JUMPING" -eq 1 && "$JUMP_TO_NAME" != "$algorithm_name" ]]; then
-              continue
-            else
-              JUMPING=0
-            fi
-
-            run_benchmark "$algorithm_name" "$subfolder" "$X" "$Y" "$D" "$II" 1 0 1 0 "$JUMP_TO_SIZE"
+  while true; do
+    for folder in "$path"/*; do
+      if [ -d "$folder" ]; then
+        # run kernel edges if found
+        # s == 1 as benchmark is defined only to SA
+        if [ -f "$folder/kernel1_edges" ]; then
+          # if kernel1_edges is found execute
+          algorithm_name=$(basename "$folder")
+          if [ -n "$OMIT_BENCHMARK" ] && [ "$algorithm_name" = "$OMIT_BENCHMARK" ]; then
+            echo "Skipping omitted benchmark $algorithm_name"
+            continue
           fi
-        done
 
-        # we need to continue if we were in subfolder and still haven't found
-        # the algo to be skipped
-        if [[ "$JUMPING" -eq 1 ]]; then
-          continue
+          # try to skip algo until the one to jump to is found
+          if [[ "$JUMPING" -eq 1 && "$JUMP_TO_NAME" != "$algorithm_name" ]]; then
+            continue
+          else
+            JUMPING=0
+          fi
+
+          run_benchmark "$algorithm_name" "$folder" "$X" "$Y" "$D" "$II" 1 0 1 0 "$JUMP_TO_SIZE"
+        else
+          # check for folders of folders (sha case)
+          for subfolder in "$folder"/*; do
+            # if folder has kernel edges we execute it
+            if [ -d "$subfolder" ] && [ -f "$subfolder/kernel1_edges" ]; then
+              algorithm_name=$(basename "$subfolder")
+              if [ -n "$OMIT_BENCHMARK" ] && [ "$algorithm_name" = "$OMIT_BENCHMARK" ]; then
+                echo "Skipping omitted benchmark $algorithm_name"
+                continue
+              fi
+
+              # try to skip algo until the one to jump to is found
+              if [[ "$JUMPING" -eq 1 && "$JUMP_TO_NAME" != "$algorithm_name" ]]; then
+                continue
+              else
+                JUMPING=0
+              fi
+
+              run_benchmark "$algorithm_name" "$subfolder" "$X" "$Y" "$D" "$II" 1 0 1 0 "$JUMP_TO_SIZE"
+            fi
+          done
+
+          # we need to continue if we were in subfolder and still haven't found
+          # the algo to be skipped
+          if [[ "$JUMPING" -eq 1 ]]; then
+            continue
+          fi
         fi
       fi
-    fi
 
-    # if we are skipping we never reach this point
-    # as soon we we stop on we don't skip we reach it
-    # we can safely set skip size to zero (no skipping)
-    JUMP_TO_SIZE=0
+      # if we are skipping we never reach this point
+      # as soon we we stop on we don't skip we reach it
+      # we can safely set skip size to zero (no skipping)
+      JUMP_TO_SIZE=0
+    done
+    
+    if [ "$INFINITE" -eq 0 ]; then
+      break
+    fi
   done
 # if -f we need to compile
 elif [ -n "$F" ]; then

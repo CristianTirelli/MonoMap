@@ -18,8 +18,8 @@ import time
 #               position excluded)
 
 @dataclass
-class RandomNodeTabu(SimulatedAnnealingTabuSpaceSearchMorpher):
-    STRATEGY_ID: str = field(default=SimulatedAnnealingTabuSpaceSearchMorpher.TEMPERATURE_STRATEGY_ID + "RANDOM-NODE", init=False)
+class RandomNodeTabu():
+    # STRATEGY_ID: str = field(default=TEMPERATURE_STRATEGY_ID + "RANDOM-NODE", init=False)
 
     # map of operation -> tabu positions
     tabu_list: dict[int, list[int]] = field(default_factory=dict, init=False)

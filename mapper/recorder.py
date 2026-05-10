@@ -35,7 +35,7 @@ class Recorder:
         return str(self.get_directory_path())
     
     def get_record_csv_file_path(self) -> Path:
-        return Path(self.BASE_PATH) / self.CSV_FILE_NAME
+        return Path(self.CSV_FILE_NAME)
     
     def record_run(
             self,

@@ -84,7 +84,8 @@ def save_plot_mappings_cgra(
         schedule: dict[str, list[int]],
         size_x: int,
         size_y: int,
-        save_to_directory: str = None):
+        save_to_directory: str = None,
+        id: None | str = None):
     II = len(schedule)
 
     # pos defines positions of nodes as dict: index -> [pos_x, pos_y]
@@ -146,7 +147,7 @@ def save_plot_mappings_cgra(
     
     nx.draw_networkx_edges(CGRA, pos, arrows=False, ax=ax)
 
-    return save_figure(fig, 'mappings-CGRA.png', save_to_directory)
+    return save_figure(fig, 'mappings-CGRA.png' if not id else f'mappings-CGRA-{id}.png', save_to_directory)
 
 
 def plot_unique_figure_iteratons(
@@ -164,19 +165,22 @@ def plot_unique_figure_iteratons(
     else:
         fig = ax1.get_figure()
 
+    X = range(1, x + 1)
+
     # cost
     color = 'tab:blue'
     ax1.set_xlabel('iterations')
     ax1.set_ylabel('cost', color=color)
-    ax1.plot(range(x), costs, color=color, label="Cost")
+
+    ax1.plot(X, costs, color=color, label="Cost")
 
     costs_sma_slow: None | list[float] = kwargs.get("costs_sma_slow", None)
     if costs_sma_slow is not None and len(costs_sma_slow) > 0:
-        ax1.plot(range(x), costs_sma_slow, color='violet', label="SMA Slow", alpha=0.8)
+        ax1.plot(X, costs_sma_slow, color='violet', label="SMA Slow", alpha=0.8)
 
     costs_sma_fast: None | list[float] = kwargs.get("costs_sma_fast", None)
     if costs_sma_fast is not None and len(costs_sma_fast) > 0:
-        ax1.plot(range(x), costs_sma_fast, color='yellow', label="SMA Fast", alpha=0.4)
+        ax1.plot(X, costs_sma_fast, color='yellow', label="SMA Fast", alpha=0.4)
 
     ax1.tick_params(axis='y', labelcolor=color)
     ax1.tick_params(axis='x')
@@ -191,7 +195,9 @@ def plot_unique_figure_iteratons(
 
     color = 'tab:red'
     ax2.set_ylabel('temperature', color=color)
-    ax2.plot(range(x), [round(t, 2) if isinstance(t, float) else t for t in temperatures], color=color, label="Temperature", alpha=0.4)
+
+    tround = [round(float(t), 2) if isinstance(t, (float, np.float64)) else t for t in temperatures]
+    ax2.plot(X, tround, color=color, label="Temperature", alpha=0.4)
     ax2.tick_params(axis='y', labelcolor=color)
 
     if xscale_log_temp:
@@ -450,6 +456,9 @@ def save_plot_run_graphs(
 
 
 
+
+
+# TODO refine
 
 
 def plot_malus_heatmaps(

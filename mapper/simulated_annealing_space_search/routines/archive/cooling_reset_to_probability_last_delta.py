@@ -1,31 +1,30 @@
+
+from dataclasses import dataclass, field
 import math
 import time
-from dataclasses import dataclass, field
 
 from simulated_annealing_space_search.simulated_annealing_space_search import SimulatedAnnealingSpaceSearch
 
+
 @dataclass
-class MorpherResetSma(SimulatedAnnealingSpaceSearch):
-    ROUTINE_ID: str = field(default="MORPHER-RESET-SMA-RESET-SMA", init=False)
+class CoolingResetToProbabilityDynamicLastDeltaSma(SimulatedAnnealingSpaceSearch):
+    # fixed to 0.5 for T tests
+    RESET_PROBABILITY: float = field(default=0.45, init=False)
 
     def __post_init__(self):
         super().__post_init__()
+    
+        NNODES_DFG = len(list(self.dfg))
 
-        self.START_TEMPERATURE = 100
-        self.ITEMS_PER_TEMPERATRE = 100
+        self.START_TEMPERATURE = NNODES_DFG * self.START_TEMPERATURE_COEFF
+        self.ITEMS_PER_TEMPERATRE = NNODES_DFG * 10
 
-    def updateTemperature(self, t: float, acceptance_rate: float) -> int:
-        if acceptance_rate > 0.96:
-            return t * 0.5
-        elif acceptance_rate > 0.8:
-            return t * 0.9
-        elif acceptance_rate > 0.15:
-            return t * 0.98
-        else:
-            return t * 0.95
+        self.ROUTINE_ID: str = f"COOLING-RESET-TO-{str(self.RESET_PROBABILITY).replace(".", "-")}-DYNAMIC-LAST-DELTA-START-T-COEFF-{self.START_TEMPERATURE_COEFF}"
 
     # Hybrid: Overall Temperature and Simulated Annealing search is shared
     def temperature_routine(self):
+        last_delta_cost_improvment: int = self.sol_cost
+
         while self.sol_cost != 0 and self.iterations < self.MAX_ITERATIONS:
             while_running_time = time.process_time()
 
@@ -38,23 +37,23 @@ class MorpherResetSma(SimulatedAnnealingSpaceSearch):
             times_we_generated_p: int = 0
 
             before_items_sol_cost: int = self.sol_cost
-            
+
             items: int = 0
             acceptance: int = 0
             before_sol_check_items_routine_time = time.process_time()
             while self.sol_cost != 0 and items < self.ITEMS_PER_TEMPERATRE:
                 before_neighbor_sol_time_item = time.process_time()
-                self.neighbour_sol_generator()
+                curr_node_pe, curr_pe_nodes = self.neighbour_sol_generator()
                 self.cumulative_neighbor_sol_time_item += (time.process_time() - before_neighbor_sol_time_item)
 
                 before_cost_space_sol_time_item = time.process_time()
-                c = self.cost_space_solution(self.curr_node_pe)
+                c = self.cost_space_solution(curr_node_pe)
                 self.cumulative_cost_space_sol_time_item += (time.process_time() - before_cost_space_sol_time_item)
 
                 dt = c - self.sol_cost
                 if dt < 0:
-                    self.node_pe = self.curr_node_pe.copy()
-                    self.pe_nodes = SimulatedAnnealingSpaceSearch.build_pe_nodes(self.node_pe)
+                    self.node_pe = curr_node_pe
+                    self.pe_nodes = curr_pe_nodes
                     self.sol_cost = c
 
                     acceptance += 1
@@ -66,18 +65,18 @@ class MorpherResetSma(SimulatedAnnealingSpaceSearch):
                     times_we_generated_p += 1
 
                     rnd = self.randgen_algorithm_run.random()
+
                     if rnd < P:
-                        self.node_pe = self.curr_node_pe.copy()
-                        self.pe_nodes = SimulatedAnnealingSpaceSearch.build_pe_nodes(self.node_pe)
+                        self.node_pe = curr_node_pe
+                        self.pe_nodes = curr_pe_nodes
                         self.sol_cost = c
 
                         acceptance += 1
-                    else:
-                        self.undo_neighbour_sol_generator()
+
                 items += 1
                 self.total_items_iterations += 1
             self.cumulative_sol_check_items_routine_time += (time.process_time() - before_sol_check_items_routine_time)
-
+            
             before_temperature_routine_time = time.process_time()
             # New average = old average * (n-1)/n + new value /n
             self.cost_sma_fast = self.cost_sma_fast * ((self.SMA_FAST_ITEMS - 1) / self.SMA_FAST_ITEMS) + self.sol_cost / self.SMA_FAST_ITEMS
@@ -98,17 +97,21 @@ class MorpherResetSma(SimulatedAnnealingSpaceSearch):
             acceptance_rate = acceptance / self.ITEMS_PER_TEMPERATRE
 
             # t update
-            if self.temperature > self.FREEZING_TEMPERATRE:
-                self.temperature = self.updateTemperature(self.temperature, acceptance_rate)
+            self.temperature *= 0.9
+
+            # improvment
+            if self.sol_cost < before_items_sol_cost:
+                last_delta_cost_improvment = before_items_sol_cost - self.sol_cost
 
             # reheating
-            if abs(self.cost_sma_fast - self.cost_sma_slow) / max(self.cost_sma_fast, self.cost_sma_slow) < self.SMA_REHEATING_THRESHOLD_PERCENTAGE and acceptance_rate < self.ACCEPTANCE_RATE_REHEATING_THRESHOLD_PERCENTAGE:
-                self.temperature = self.START_TEMPERATURE
-                self.cost_sma_slow = self.start_configuration_cost
+            if self.cost_sma_fast < self.cost_sma_slow and self.cost_sma_slow < self.cost_sma_fast + self.EPSILON and acceptance_rate < 0.1:
+                # compute the delta c = self.sol_cost
+                self.temperature = last_delta_cost_improvment / math.log(1 / self.RESET_PROBABILITY)
 
             print(f"{int(running_since):4d}s A_RT: {acceptance_rate:2.2f}  C: {self.sol_cost:6d}  SMA {self.SMA_SLOW_ITEMS}: {self.cost_sma_slow:4.1f}  SMA {self.SMA_FAST_ITEMS}: {self.cost_sma_fast:4.1f}  T: {self.temperature:4.4f}", end='\r')
 
             self.iterations += 1
             self.cumulative_temp_routine_time += (time.process_time() - before_temperature_routine_time)
-            
+
+            # total while running time
             self.cumulative_running_time += (time.process_time() - while_running_time)

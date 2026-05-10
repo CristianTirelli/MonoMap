@@ -34,7 +34,7 @@ from simulated_annealing_space_search.simulated_annealing_space_search import Si
 
 @dataclass
 class CoolingResetSma(SimulatedAnnealingSpaceSearch):
-    TEMPERATURE_STRATEGY_ID: str = field(default="COOLING-RESET_", init=False)
+    ROUTINE_ID: str = field(default="COOLING-RESET", init=False)
 
     def __post_init__(self):
         super().__post_init__()
@@ -44,7 +44,6 @@ class CoolingResetSma(SimulatedAnnealingSpaceSearch):
 
     # Hybrid: Overall Temperature and Simulated Annealing search is shared
     def temperature_routine(self):
-    
         while self.sol_cost != 0 and self.iterations < self.MAX_ITERATIONS:
             while_running_time = time.process_time()
 
@@ -56,22 +55,24 @@ class CoolingResetSma(SimulatedAnnealingSpaceSearch):
             average_p: float = 0
             times_we_generated_p: int = 0
 
+            before_items_sol_cost: int = self.sol_cost
+
             items: int = 0
             acceptance: int = 0
             before_sol_check_items_routine_time = time.process_time()
             while self.sol_cost != 0 and items < self.ITEMS_PER_TEMPERATRE:
                 before_neighbor_sol_time_item = time.process_time()
-                curr_node_pe, curr_pe_nodes = self.neighbour_sol_generator()
+                self.neighbour_sol_generator()
                 self.cumulative_neighbor_sol_time_item += (time.process_time() - before_neighbor_sol_time_item)
 
                 before_cost_space_sol_time_item = time.process_time()
-                c = self.cost_space_solution(curr_node_pe)
+                c = self.cost_space_solution(self.curr_node_pe)
                 self.cumulative_cost_space_sol_time_item += (time.process_time() - before_cost_space_sol_time_item)
 
                 dt = c - self.sol_cost
                 if dt < 0:
-                    self.node_pe = curr_node_pe
-                    self.pe_nodes = curr_pe_nodes
+                    self.node_pe = self.curr_node_pe.copy()
+                    self.pe_nodes = SimulatedAnnealingSpaceSearch.build_pe_nodes(self.node_pe)
                     self.sol_cost = c
 
                     acceptance += 1
@@ -85,11 +86,13 @@ class CoolingResetSma(SimulatedAnnealingSpaceSearch):
                     rnd = self.randgen_algorithm_run.random()
 
                     if rnd < P:
-                        self.node_pe = curr_node_pe
-                        self.pe_nodes = curr_pe_nodes
+                        self.node_pe = self.curr_node_pe.copy()
+                        self.pe_nodes = SimulatedAnnealingSpaceSearch.build_pe_nodes(self.node_pe)
                         self.sol_cost = c
 
                         acceptance += 1
+                    else:
+                        self.undo_neighbour_sol_generator()
 
                 items += 1
                 self.total_items_iterations += 1
@@ -103,7 +106,11 @@ class CoolingResetSma(SimulatedAnnealingSpaceSearch):
             # data
             self.costs.append(self.sol_cost)
             self.temperatures.append(self.temperature)
-            self.probabilities.append(average_p / times_we_generated_p if times_we_generated_p > 0 else None)
+
+            self.probabilities.append(
+                average_p / times_we_generated_p if times_we_generated_p > 0 and before_items_sol_cost != self.sol_cost
+                    else (self.probabilities[-1] if len(self.probabilities) > 1 else 1 ** -16))
+
             self.costs_sma_fast.append(self.cost_sma_fast)
             self.costs_sma_slow.append(self.cost_sma_slow)
 
@@ -114,7 +121,7 @@ class CoolingResetSma(SimulatedAnnealingSpaceSearch):
             self.temperature *= 0.9
 
             # reheating
-            if self.cost_sma_fast < self.cost_sma_slow and self.cost_sma_slow < self.cost_sma_fast + self.EPSILON and acceptance_rate < 0.1:
+            if abs(self.cost_sma_slow - self.cost_sma_fast) < self.SMA_REHEATING_THRESHOLD_PERCENTAGE and acceptance_rate < self.ACCEPTANCE_RATE_REHEATING_THRESHOLD_PERCENTAGE:
                 self.temperature = self.START_TEMPERATURE
                 self.__temperature_reset__()
 

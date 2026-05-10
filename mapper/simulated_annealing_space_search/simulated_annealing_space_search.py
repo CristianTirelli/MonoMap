@@ -2,7 +2,7 @@ import random
 import time
 from dataclasses import dataclass, field
 
-from networkx import Graph
+from networkx import DiGraph, Graph
 
 from benchmark import Benchmark
 from recorder import Recorder
@@ -14,16 +14,37 @@ from plots import save_plot_run_graphs
 
 @dataclass
 class SimulatedAnnealingSpaceSearch:
-    # No id as it is inherited by any strategy class
-    # and does not determine any difference for a class
+    # Define all IDs here so that it is cleaner
+    ID: str = field(default=None, init=False)
+
+    START_ID: str = field(default=None, init=False)
+    STRATEGY_ID: str = field(default=None, init=False)
+    ROUTINE_ID: str = field(default=None, init=False)
 
 
+    ## Input ##
+    # input specific data
+    schedule: dict[str, list[int]]
+    size_x: int
+    size_y: int
 
-    # Runtime variables
+    directed_dfg: DiGraph
+    dfg: Graph
+    arch: Graph
+
+    BENCHMARK: Benchmark
+    RECORDER: Recorder
+
+
+    ## Runtime variables ##
     # holds the current best solution
     node_pe: dict[int, int] = field(default_factory=dict, init=False)
     pe_nodes: dict[int, list[int]] = field(default_factory=dict, init=False)
     cost: int = field(default=0, init=False)
+
+    # holds the current neighbouring solutions, it is the data structure used
+    # by neighbour_sol_generator and undo_neighbour_sol_generator to 
+    curr_node_pe: dict[int, int] = field(default_factory=dict, init=False)
 
     start_configuration_cost: int = field(default=0, init=False)
 
@@ -44,27 +65,17 @@ class SimulatedAnnealingSpaceSearch:
 
     start_time: float = field(default=0.0, init=False)
 
+    MODEL_NUMBER: int = field(default=None, kw_only=True)
+
+    # may be helpful have dict: (node, time) = pe, but as to be bookept: runtime variable
 
 
-    ## COSTANTS ##
-    # input specific data
-    schedule: dict[str, list[int]]
-    size_x: int
-    size_y: int
-
-    dfg: Graph
-    arch: Graph
-
-    BENCHMARK: Benchmark
-    RECORDER: Recorder
-
-    # may be helpful have dict: (node, time) = pe
-
-    # holds pe -> schedule time
-    node_schedule_t: dict[int, int] = field(default_factory=dict, init=False)
+    ## CONSTANTS ##
+    # holds node -> schedule time
+    NODE_SCHEDULE_T: dict[int, int] = field(default_factory=dict, init=False)
 
     # number of nodes
-    nnodes: int = field(default=0, init=False)
+    NNODES: int = field(default=0, init=False)
 
     # iterations and timeout
     MAX_ITERATIONS: int = field(default=1_000_000, init=False)
@@ -74,6 +85,7 @@ class SimulatedAnnealingSpaceSearch:
     START_TEMPERATURE: int | None = field(default=None, init=False)
     ITEMS_PER_TEMPERATRE: int = field(default=0, init=False)
     FREEZING_TEMPERATRE: float = field(default=0.001, init=False)
+    START_TEMPERATURE_COEFF: int = field(default=10, kw_only=True)
 
     # SMA
     SMA_SLOW_ITEMS: float = field(default=100, init=False)
@@ -81,6 +93,8 @@ class SimulatedAnnealingSpaceSearch:
 
     EPSILON: float = field(default=0.001, init=False)
 
+    SMA_REHEATING_THRESHOLD_PERCENTAGE: float = field(default=0.001, init=False)
+    ACCEPTANCE_RATE_REHEATING_THRESHOLD_PERCENTAGE: float = field(default=1e-6, init=False)
 
 
     ## BENCHMARK DS ##
@@ -101,10 +115,11 @@ class SimulatedAnnealingSpaceSearch:
     cumulative_running_time: float = field(default=0.0, init=False)
 
 
-
+    # In constructors: It is assumed we work only on static data, passed at initialization
+    # you can't assume that Runtime variables are ready, it is a place to initialize COSTANTS
     def __post_init__(self):
-        print(f"Initial solution of seed: {self.seed_start_configuration}")
         self.randgen_start_configuration = random.Random(self.seed_start_configuration)
+        print(f"Initial solution of seed: {self.seed_start_configuration}")
 
         if self.seed_algorithm_run:
             self.randgen_algorithm_run = random.Random(self.seed_algorithm_run)
@@ -112,27 +127,16 @@ class SimulatedAnnealingSpaceSearch:
             # arbitrary large random seed
             self.seed_algorithm_run = random.randrange(10**8)
             self.randgen_algorithm_run = random.Random(self.seed_algorithm_run)
+        print(f"Algorithm run seed: {self.seed_algorithm_run}")
 
         # compute dfg number of nodes
-        self.nnodes = len(list(self.dfg))
+        self.NNODES = len(list(self.dfg))
  
-        # build node_schedule_t
+        # build NODE_SCHEDULE_T
         for t in self.schedule:
             for n in self.schedule[t]:
-                self.node_schedule_t[n] = t
+                self.NODE_SCHEDULE_T[n] = t
 
-        # Generate starting random solution and evaluate it
-        self.initial_sol_generator()
-
-        # compute solution cost
-        self.sol_cost = self.cost_space_solution(self.node_pe)
-        self.start_configuration_cost = self.sol_cost
-
-        # init MA
-        self.cost_sma_fast = float(self.sol_cost)
-        self.cost_sma_slow = float(self.sol_cost)
-
-        print(f"Algorithm run seed: {self.seed_algorithm_run}")
 
     @staticmethod
     def isConnected(pe1: int, pe2: int, size_y: int, size_x: int, debug = False) -> bool:
@@ -189,6 +193,19 @@ class SimulatedAnnealingSpaceSearch:
         return False
     
 
+    @staticmethod
+    def build_pe_nodes(node_pe: dict[int, int]) -> dict[int, list[int]]:
+        pe_nodes: dict[int, list[int]] = {}
+
+        for n in node_pe:
+            pe = node_pe[n]
+            if pe not in pe_nodes:
+                pe_nodes[pe] = []
+            pe_nodes[pe].append(n)
+
+        return pe_nodes
+    
+
     def pe_distance(self, pe1: int, pe2: int) -> int:
         """
         Computes manhattan distance of the shortest path from pe1 to pe2 considering CGRA wrap around
@@ -222,7 +239,7 @@ class SimulatedAnnealingSpaceSearch:
 
     
     # Implementation Specific (Strategy)
-    def neighbour_sol_generator(self) -> tuple[dict[int, int], dict[int, list[int]]]:
+    def neighbour_sol_generator(self):
         """
         Neighbour solution generator.
         The function should use an existing solution to construct a neighbouring solution to traverse the solution space in the vicinity of the solution used.
@@ -231,6 +248,16 @@ class SimulatedAnnealingSpaceSearch:
 
         :return: A random solution, composed by node_pe and pe_nodes dictionaries. The solution may be valid or invalid.
         :rtype: tuple[dict[int, int], dict[int, list[int]]]
+        """
+        raise NotImplementedError
+
+    def undo_neighbour_sol_generator(self):
+        """
+        Undo the last Neighbour solution generator action.
+        The function uses the last geenrate neighbor solution to apply the inverse change applyed by `neighbour_sol_generator`
+
+        The implementation differs from strategy to strategy.
+        The neighbour solution should return to be equal to the current best startegy
         """
         raise NotImplementedError
 
@@ -245,9 +272,22 @@ class SimulatedAnnealingSpaceSearch:
             - add all benchmarking data to relative variables
         """
         raise NotImplementedError
-    
+
+    # Generation of an initial solution
+    def initial_sol_generator(self):
+        """
+        Initial solution generator.
+
+        It assumes that the schedule does not schedule more instructions than available PEs.
+        For each schedule it positions instructions at random in available PEs.
+
+        This implementation generates a random initial solution
+        """
+        raise NotImplementedError
+
+
     # Semi-Hybrid: Some strategies may add extra computation to the cost function
-    def cost_space_solution(self, curr_node_pe: dict[int, int], p: str | None = None) -> int:
+    def cost_space_solution(self, curr_node_pe: dict[int, int], p: str | None = None, silent: bool = False) -> int:
         """
         We need to add a value, a "cost" to all actions that randomness produces and that bring us away from a valid solution.
         We need to structure those costs in such a way that the more wrong the action is the more it costs.
@@ -273,12 +313,20 @@ class SimulatedAnnealingSpaceSearch:
             destination = e[1]
 
             # should always be present
-            if source not in curr_node_pe:
-                raise AssertionError("source is not present in node_pe")
-            if destination not in curr_node_pe:
-                raise AssertionError("destination is not present in node_pe")
+            if silent:
+                if source not in curr_node_pe:
+                    continue
+                if destination not in curr_node_pe:
+                    continue
+            else:
+                if source not in curr_node_pe:
+                    raise AssertionError("source is not present in node_pe")
+                if destination not in curr_node_pe:
+                    raise AssertionError("destination is not present in node_pe")
+
             ps = curr_node_pe[source]
             pd = curr_node_pe[destination]
+
 
             if p:
                 print(f"{p} Check: source, pe: {source}, {ps} destination, pe: {destination}, {pd} connected: {self.isConnected(pd, ps, self.size_y, self.size_x)}")
@@ -290,43 +338,11 @@ class SimulatedAnnealingSpaceSearch:
         if p:
             print(f"{p} final cost: {cost}")
         return cost
-
-    # Hybrid Functions
-    # Generation of an initial solution
-    def initial_sol_generator(self):
-        """
-        Initial solution generator.
-
-        It assumes that the schedule does not schedule more instructions than available PEs.
-        For each schedule it positions instructions at random in available PEs.
-
-        This implementation generates a random initial solution
-        """
-        node_pe: dict[int, int] = {}
-        pe_nodes: dict[int, list[int]] = {}
-
-        size = self.size_x * self.size_y
-
-        for t in sorted(self.schedule):
-            available_pes = [i for i in range(size)]
-
-            for node in sorted(self.schedule[t]):
-                pe = self.randgen_start_configuration.choice(available_pes)
-                
-                if pe not in pe_nodes:
-                    pe_nodes[pe] = []
-                pe_nodes[pe].append(node)
-
-                if node not in node_pe:
-                    node_pe[node] = pe
-                else:
-                    print(f"should not happend, node: {node}, pe: {pe}")
-
-                available_pes.remove(pe)
-
-        # apply to main variables
-        self.node_pe = node_pe
-        self.pe_nodes = pe_nodes
+    
+    # Events like function
+    # additional setup post construction of constant
+    def __post_costant_initialization__(self):
+        pass
 
     # routine that children may override and can be called once temperature is reset to trigger
     # specific mutations
@@ -340,9 +356,57 @@ class SimulatedAnnealingSpaceSearch:
 
     # Overall Temperature and Simulated Annealing search is shared
     def simulatedAnnealingSearch(self) -> tuple[dict[int, int],  dict[int, list[int]], float]:
+        # prepare id: it is also a check that all needed classes have been added
+        if not self.START_ID:
+            raise AssertionError("START is not set")
+        if not self.ROUTINE_ID:
+            raise AssertionError("ROUTINE is not set")
+        if not self.STRATEGY_ID:
+            raise AssertionError("STRATEGY is not set")
+        
+        # last constant that needs constructors to be succesfull
+        self.ID = f"{self.START_ID}_{self.ROUTINE_ID}_{self.STRATEGY_ID}"
+
+        print(f"Running: {self.ID}")
+
+        # prepare temperature
         if not self.START_TEMPERATURE:
             raise AssertionError("Start temperature must be set before calling simulatedAnnealingSearch")
         self.temperature = self.START_TEMPERATURE
+
+        # post CONSTANTs initialization
+        self.__post_costant_initialization__()
+
+        # Generate starting random solution and evaluate it
+        self.initial_sol_generator()
+        # first solution: deep copy
+        self.curr_node_pe = self.node_pe.copy()
+
+        # compute solution cost
+        self.sol_cost = self.cost_space_solution(self.node_pe)
+        self.start_configuration_cost = self.sol_cost
+
+        # init MA
+        self.cost_sma_fast = float(self.sol_cost)
+        self.cost_sma_slow = float(self.sol_cost)
+
+        # we warm data collectors
+        self.costs.append(self.sol_cost)
+        self.temperatures.append(self.temperature)
+        self.probabilities.append(1)
+        
+        if isinstance(self.costs_sma_fast, list):
+            self.costs_sma_fast.append(self.cost_sma_fast)
+        if isinstance(self.costs_sma_slow, list):
+            self.costs_sma_slow.append(self.cost_sma_slow)
+
+        self.iterations = 1
+
+        # we set benchmarker and recorder if present
+        if self.BENCHMARK:
+            self.BENCHMARK.set_algorithm_type(self.ID)
+        if self.RECORDER:
+            self.RECORDER.set_algorithm_type(self.ID)
 
         print()
         print("*** START SA ROUTINE ***\n")
@@ -409,6 +473,7 @@ class SimulatedAnnealingSpaceSearch:
             }
         )
 
+        # TODO adjust
         self.__extra_plots__(plot_files_path)
 
         if self.BENCHMARK:
@@ -426,11 +491,11 @@ class SimulatedAnnealingSpaceSearch:
                 self.seed_start_configuration,
                 self.seed_algorithm_run,
 
-                average_neighbor_sol_time_item =(self.cumulative_neighbor_sol_time_item / self.total_items_iterations),
-                average_cost_space_sol_time_item =(self.cumulative_cost_space_sol_time_item / self.total_items_iterations),
-                average_sol_check_items_routine_time =(self.cumulative_sol_check_items_routine_time / self.iterations),
-                average_temp_routine_time =(self.cumulative_temp_routine_time / self.iterations),
-                average_running_time =(self.cumulative_running_time / self.iterations)
+                average_neighbor_sol_time_item =(self.cumulative_neighbor_sol_time_item / self.total_items_iterations) if self.total_items_iterations > 0 else 0,
+                average_cost_space_sol_time_item =(self.cumulative_cost_space_sol_time_item / self.total_items_iterations)  if self.total_items_iterations > 0 else 0,
+                average_sol_check_items_routine_time =(self.cumulative_sol_check_items_routine_time / self.iterations) if self.iterations > 0 else 0,
+                average_temp_routine_time =(self.cumulative_temp_routine_time / self.iterations) if self.iterations > 0 else 0,
+                average_running_time =(self.cumulative_running_time / self.iterations) if self.iterations > 0 else 0
             )
 
         if self.RECORDER:
@@ -438,10 +503,13 @@ class SimulatedAnnealingSpaceSearch:
                 costs=self.costs,
                 temperatures=self.temperatures,
                 probabilities=self.probabilities,
-                costs_sma_fast=self.costs_sma_fast,
-                costs_sma_slow=self.costs_sma_slow
+                
+                # optionally pass in
+                **({"costs_sma_fast": self.costs_sma_fast,
+                    "costs_sma_slow": self.costs_sma_slow}
+                    if isinstance(self.costs_sma_fast, list) and isinstance(self.costs_sma_slow, list)
+                    else {})
             )
 
         print()
         return (self.node_pe, self.pe_nodes, total_time)
-

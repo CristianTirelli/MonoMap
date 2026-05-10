@@ -450,7 +450,16 @@ The strategy I choose to use as baseline for benchmarkings is the one where we u
 
 We might have found a random seed that performs well and finds solutions also for the 20x20 with relative ease, I have two seeds that do not and that have been already benchmarked (although not by using this algorithm strategy). It might be a good thing to use also such seed to benchmark temperatures.
 
-Then we can move to the different model number using the fixed probability reheating that seems working best.
+Then we can move to the different model number using the fixed probability reheating that seems working best. We will use the reheating to fixed probability with best solution cost with a probability reheating of 0.5 which seems to be the most promising and balanced. I am going to test it on hotspot3D at 20x20, which is th hardest problem before cfd. I have just two doubts:
+
+- I hope the size means the number of nodes and not the number of edges.
+- I hope the algorithm run seed for the 9 T benchmarks should not be set to always be the same as nothing is said, if i get time I will do also with fixed algorithm run seed
+
+I need to ask if the number of edges and maybe distinguish the type such as direct dependency or loop dependency might be also good to consider.
+
+After when we understand the best starting T I will make a total benchmark with reheating to porbability and the new T start.
+
+T start temperatures benchmarks show that 
 
 ---
 
@@ -468,16 +477,232 @@ So all things done are:
    - Current best solution cost, kept: best
    - Learned during descent, kept
    - Fixed probability detached from temperature, kept but we can probably remove it, discuss
-- Benchmarked with different % on a hard problem (hotspot3D, as we can solve it but sometimes we don't) with the most promising temperature system: Current best solution cost, with same algorithm routine, same start and algorithm seeds. Done hotspot3D with random seed and seed we failed for morpher at 20x20, did an additional run for hotspot 10x10 with the random seed
-- 
+
+- Questions: ...should we consider edges and type for start T? ...should we make benchmarks also for items coefficient the same we did for the start temperature?
 
 So all benchmarks made are:
 
 - morpher + spike and reset of MA to initial value: 100 items slow MA
 - cooling + spike: 100 items slow MA and ITEMS_PER_TEMPERATURE = number of dfg nodes * 10
 - new routine with deep-copy and new routine with improved copy: we want to checkspeed against the old routine
-- fixed T reheating with same start and also random seeds, benchmarked hotspot3D 10x10 for temperatures: 
+- Benchmarked with different % on a hard problem (hotspot3D, as we can solve it but sometimes we don't) with the most promising temperature system: Current best solution cost, with same algorithm routine, same start and algorithm seeds. Done hotspot3D with random seed and seed we failed for morpher at 20x20, did an additional run for hotspot 10x10 with the random seed. % run from 0.05 to 0.8 at 0.05 % step.
+- Benchmarked with different % on a hard problem (hotspot3D, as we can solve it but sometimes we don't) with the most promising temperature system: Current best solution cost, with same algorithm routine, same start and algorithm seeds. Done hotspot3D with random seed and seed we failed for morpher at 20x20, did an additional run for hotspot 10x10 with the random seed
+- Benchmarked the set of 9 benchmarks using the cooling and reset probability set to 0.5, with the exact set settings and random algorithm run seed for all T made of number of dfg noes times 1, 10, 100
+- Benchmarked the set of 9 benchmarks using the cooling and reset probability set to 0.5, with the exact set settings and random algorithm run seed with a fixed algorithm run seed for all T made of number of dfg noes times 1, 10, 100
 
+### 13.04.26
+
+/Users/eliariva/Documents/Puddi/USI/BachelorProject/MonoMap/benchmarks-results/hotspot3D/20x20/COOLING-RESET-TO-0-5-DYNAMIC-BEST-COST-START-T-COEFF-1_RANDOM-NODE-WITH-SWAP-SAME-INIT-CONF-MODEL-NUMBER-4/2026-04-11T13-25-29
+
+I have recorded the data of the run and the result is: 
+
+| iteration | costs | temperatures | probabilities | costs_sma_fast | costs_sma_slow |
+|-----------|-------|--------------|---------------|----------------|----------------|
+| 0         | 2901  | 57           | 0.18077907358023343    | 6445.0    | 7286.7       |
+
+and indeed it does not seem to start at the right temperature cost.
+
+/Users/eliariva/Documents/Puddi/USI/BachelorProject/MonoMap/benchmarks-results/hotspot3D/20x20/COOLING-RESET-TO-0-5-DYNAMIC-BEST-COST-START-T-COEFF-100_RANDOM-NODE-WITH-SWAP-SAME-INIT-CONF-MODEL-NUMBER-4/2026-04-10T21-43-01
+
+for this benchmark we have:
+
+I have recorded the data of the run and the result is: 
+
+| iteration | costs | temperatures | probabilities | costs_sma_fast | costs_sma_slow |
+|-----------|-------|--------------|---------------|----------------|----------------|
+| 0         | 8331  | 5700         | 0.9757668062431737  | 7531.0    | 7341.0       |
+
+
+and indeed it does not seem to start at the right temperature cost.
+
+The plausible reason I can think before looking at the cose is that since the SMA record a cost very close to the actual start plus next iteration element, I probably don't save the first iteration cost, I save if after we select the first solution.
+
+Indeed, the issue was that I was nto adding the very first solution that we find, once added the two starting iteration of the two run are, respectively:
+
+| iteration | costs | temperatures | probabilities | costs_sma_fast | costs_sma_slow |
+|-----------|-------|--------------|---------------|----------------|----------------|
+| 0 | 7331 | 57 | 1 | 7331.0 | 7331.0 |
+| 0 | 7331 | 5700 | 1 | 7331.0 | 7331.0 |
+
+Still, the chart does not look like the recorded data. As we put the log scale the problem is that `log(0)` is not defined, thus matplotlib drops the first value without any warnings whatsoever, so it appears as if it is not there, we can solve it by making the x range start from 1 up until total iterations. After fixing it I also removed noise from the probablity by computing the acceptance probability only if the selected items made the solution cost change, this is because it is very improbably that at high temperatures the probability is set to the same value while at low temepratures it is very probable and it will happens to accept a new solution rarely, thus we should be able to mitigate the noise by not adding probability when such case happens, and in case it does at high temperatures we bring forward the last probability, which should be close to the current one and ultimately it won't mess up the chart.
+
+I think it does in fact reduce the noise by a lot improving the readability of charts while maintaining correctness.
+
+---
+
+It is hard to set the temperature to a fixed probability because the problem it is in varies a lot, and the probability to pick up a solution always depends on the delta of the two solutions.
+Picture a 5x5 and a 20x20 the same probability that will give a 50% acceptance rate in a neighbor is different between the two sizes, moreover it differs also in the quality of the given solution. To iterate better I re-implement previous algorithm and benchmark them all for probabilities: `0.5`, `0.45`, `0.4`, `0.35` of expected reheating probability to show how they behave when handling the reheating. Strategies implemented and tested are, and they are labeled dependning on how the $\Delta c$ is selected:
+
+- Best solution until now
+- Learned during descent rehating (actually, here we do not learn $\Delta c$ but to associate the temperature to the probability)
+- Fixed probability
+- Last improvement delta (new)
+
+and benchmark them all on hotspot3D 20x20 for something like around 5 benchmarks each.
+
+I implemented the last improvment delta, but at a very similarity of same reheating c with the best solution strategy it does diverge towards less costs temperatures and is unable to reheat up to the probability we have set, in contrast the best solution does reheat more. A difference has to be noted: the last improvment delta plateaus at around a cost of 150 while best solution lower, or when it is higher and would plateau at 180 it will use a c of 180 to reheat.
+
+Best solution until now for a solution cost of `4` applies:
+
+`applying temperature rehating to: 5.7707801635558535`
+
+of temperature when reheating and the probability shoots up as to accept solutions of cost of around 80/50 with maximum of more than 120, still the temperature probability in the chart seems misleading to me.
+
+Similarly, at low temepratures the delta is very low even for which solutions costs:
+
+`applying temperature rehating to: 4.328085122666891`
+
+as it probably accepted a very tiny improvment of 4 or 1. But when reheating such temperature does not make it able to escape the local minimum as it would need a very high temperature to accept worst solution it finds itself blocked as such low c provides very low temperature, and as there are no better solutions in that neighbor it will never be able to escape. Since it timeouts ofter I will do less tests for such strategy.
+
+I spent some more time iterating over the fixed temperature strategy as it did not worked even closely to how it should, indeed there were some problems such as the missing discouraging of bad solution and a cooling that did not reached colder enough temperature for enough time. 
+
+After doing so I feel more confident about the dynamic best solution reheatign with a reheating to 0.45 of probability. I feel like in benchmarks it behaves much more consistently compared to other solutions.
+
+---
+
+I refactored the class strucutre to comprehend a start function that is implementation based, and I extraploed from strategies up to a root to `builder.py`, in which given a class for a start, routine and strategy you can make the composition of a simulated annealing strategy as to make a construction with those different classes easily.
+
+---
+
+From the tests of all benchmarks with a startign temperature coefficient of 1, 10 and 100 I found that usually the 1 coefficient runs are faster than others but by consistency 10 perform bettter (backprop, basicmath, crc32, gsm, stringsearch), in some benchmarks 100 temperature also performed better (gsm, hotspot3D), but I think at this level of closeness we need more data to be sure about it. 
+
+I found also a very strange behaviour for a stringsearch problem, 20x20 where the search seems to be stuck and the temperature to never reheat, with the 100 temperature start coefficient. The seed is: 64051248. I will look into it
+
+---
+
+I am implementing the starting algorithms. While implementing them I got an idea for a new routine that might better for problems which happen to be stuck a lot in local minima. Strategies are:
+
+- Opening: We select the miggle PE in which we position all nodes, then we iterate over each node and select one of then neighbouring positions: top, right, bottom, left, and we move it until we end un in a position that does not overlap with any node. After doing so with all nodes we obtain a configuration that is very close, ensuring a lower cost.
+- Greedy: We first define a function `nodes_pes_overlap_count` that iterates over all nodes and counts how many overalps there are for each node, since overlaps will be counted twice we then divide by two, returning effectively how many distinct overalps there are. While computing overlaps we build a list of all nodes indexes that are overlapping. At the beginning we position all nodes in the middle PE, we then compute the overlap count which is at the maximum possible value, and we enter a while loop that terminates when overlaps reach zero. In the while loop we select one node from the overallping list, I then iterate over all pes for that node and I will select the pe out of them all with both the least cost and least overlapping count, then apply it, recompute overalpping costs and list and iterating again. Once the overallping count reaches zero we stop.
+- Temperature Start: We start at high temperatures and we position all nodes within a unpositioned list of nodes, we also keep an overlapping count and a list of overlapping nodes at each iteraton. We then take a node from one of the two list at random: either unpositioned or overlapping or if one of those is empty we take the other list, then we select a rnadom node within the list and the positon and check: if the solution and overlapping costs are less than they were previously we will accept right away otherwise we go with the temperaute probability and look to accept based on a probability.
+- Temperature Start Inverted: We start by a list of unpositioned nodes, and by maintaining a list of overlapping nodes at each iterations. We then start and select from one of the two lists at random but that decays to the non empty list if one is empty, a random node and a random pe position, then we accept it if it improves both overlaps and cost or we go the temperature based acceptance if not.
+- Temperature Start Centered: Same as Temperature Start but we position all nodes in the middle before starting, ignoring unpositioned list. We do so as to address the begin acceptance that is described in one of the next paragraphs
+- Temperature Start Inverted Centered: Same as Temperature Start but we position all nodes in the middle before starting, ignoring unpositioned list. We do so as to address the begin acceptance that is described in one of the next paragraphs
+
+The idea that came up to my mind is: if we keep ending in a local minimum and we reheat for x times it would maybe be better if we restart the run with a new starting solution, as it might be that to find a global minimum we need to make so many bad choices as to chnage the structure thata reheating to a small probability or just a reheat may not lead to enough chnages for us to find a good valley.
+
+The Temperature Start diverges because the high temperature makes it so that the nodes are positioned on any nodes.
+
+The Temperature Start Inverted converges more than the non-inverted counterpart but still has a lot of acceptance right away because of the fact that we position ndoes that probably have not a dependency between them so the cost is very reluctant to ramp up, and as such they "maintain" the solution cost at 0, which implies that those initial nodes are basically random positioned. We position 34 nodes right away (basically random) and the remaining 23 using a temperature based selection. The same way high initial temperature of the SA regular procedure makes the search diverge greatly and move back to costs of random solutions.
+
+Either I see how it changes then start temperature coefficient is 1 or I will try to start SA from freezing temperatures.
+
+As the 100 temperature makes the start solution diverge and 1 solution too I will benchmark:
+
+- 1 temperature coefficient and initial strategies: Greedy, Temperature start, Temperature start inverted from center
+
+I will also benchmark the restart strategy on all benchmarks.
+
+I did a few benchmarks with high T (* 10 / 100) to show that for computed starts it diverges to random beginning
+
+---
+
+I printed more information about the DFG graph of both hotspot3D and cfd, which are similar in size, and close with difficulty, with hotspot being more easier than cfd but the closer one to it. I want to get as many information as possible as what makes cfd much more difficult than hotspot3D. I need to analyze them better.
+
+---
+
+Thought: It is not about the position relative to PEs but the position relative to other operations: the structure it is forming compared with other operations: Can we make a 3D image of how operations are positioned? Like a CGRA from top at `t = 0` and moving down with layers until the last clock time.
+
+### 27.04.26
+
+I started by implementing a refactor that can help speed and algorithm programming: we define two functions for each strategy to implement: `neighbour_sol_generator` and `undo_neighbour_sol_generator`.
+
+Each routine is now also changed to always hold two solution at any given time: the best solution found and the current neighbor solutions denoted as `node_pe` and `curr_node_pe` respectively. Each time we operate over `node_pe`, in the case that aslo `pe_nodes` is needed, it is indeed compute each time a new solution is accepted.
+
+It does create mutation complexity: we are always modifying the same DS in multiple region of the code, but it is the cost for less code and faster execution.
+
+I did indeed applied the refactor, now the code is much lighter but the time did not change much, and it did not prove to be faster, for a recorded run it is actually slower of about 2s. But another benchmarks just improved from 210s to 110s, almost dividing the time. I think that overall the refactor is an improvment for the less complexity in the code structure, (probably) speed at cost of more mutation intricancy.
+
+---
+
+I did all greedy benchmarks.
+
+---
+
+I have written the analytics algorithm but I think the CSV with all algorithms in line is not going to make it, because it is very hard to read as we have a lot of different algorithm versions, up to 105.
+
+I think I need to provide plots in someway that makes it for a better analysis, maybe plots that aggregate the same algortihm names, and similar such as the only reheating coeffcicient difference.
+
+It would also be good to have a "top 10" algorithms were i display the top 10 out of all algorithms.
+
+### 04.05.26
+
+I finished implementing the analytics at a stable stage. While doing so I found that some of the strategies that have been implemented about lists have not been brought to the new benchmarking system, thus have not been saved in any CSV. Strategies like: MOST-CLOCK-DEPENDENCIES with all poisson types, WORST-POSITIONED-MOST-DEPENDENCIES-NODE with all poisson types and WORST-POSITIONED-NODE without poisson. Should I migrate them and run some benchmarks?
+
+---
+
+Looking at the newly collected data the greey starting strategy with temperature starting at 10 seems to me to be the current best startegy out of them all, so when considering this week start I will pick up the Greedy 10. I might consider doing more benchmarks of all startegies to get better throughtfull data for analytics.
+
+---
+
+I am not sure about the benchmarks we need to do: if the random start is random and different for both or it is random but the same for the two strategies. I did random and different.
+
+---
+
+I have finished implementing a stable version of analytics with a good chart structure that I think it is capable of handling well comparisons, and it is also easy to tune for additional strategies comparisons on the fly.
+
+I started by diving strategies into different macro-groups:
+
+- `classic-implementations`, which comprehends all initial and simple strategies, especially important for the `Cooling` and `Morpher` cooling routines. Here we find implementation of the slow reheating and the first impleemntation of the SMA.
+- `list-selection`, which is the next startegies that have been implemented in chronological order comprehend all startegis that pick nodes not at random but from a predefined list with an heuristic to define its order, each list is then picked from using a poisson distribution, that is either fixed at a lambda, proportional to the size of the list or following the temperature (higher it is, the more lambda is towards lower scoring nodes). We found that they do not provide any advantage from the random node selection, thus have been discarded.
+- `spike-temperature`, which introduce a complete reset reheating to initial temperature. This has been introduced from a paper Cristian suggested, the temperautre is reset following SMA. We found a clear improvement and discarded any slow reheating strategy we had.
+- `probability-reheating-routine`, which modify the spike reheating to be spiked to a specific temperature which will give a desired probability of accepting different solutions. We found that indeed it is favourable to the search and that a compelte reheating to temperatures that given a complete accepance rate are not ideal.
+- `precomputed-start`, which modify the starting solution of the search by having an heuristic precomputed startegy instead of having a completely random starting strategy. 
+- `special-strategies`, which comprehends all strategies that do not fit directly in a macrocategory because of a peculiarity within its implementation.
+
+From charts we can easily see that strategies within the `classic-implementations` do find solutions to majority of problems (except cfd, hotspot3D, some backdrop and some nw) but have their obstacles as all strategies do provide a solution in a considerably high amount of time.
+
+List selection strategies have very few benchmarks and from those few we can clearly see that classic implementation already perform better, they are unable of finding solutions also to simple problems such as aes and basicmath, and do not find immediately a solution to the simplest problem of benchmarks: bitcount.
+
+Spike temperature makes us able to have a jump in performance and solutions: we find solutions to all problems except for cfd, with morpher reset SMA and cooling reset SMA being very fast at finding those solutions. Clearly an improvment that has to be kept moving forward.
+
+Probability reheating has a very messy chart because of the large quantities of elements within it, we can have a better view of those startegies looking at some custom macro groups we build: `best-cost-different-reheating-probability`, `greedy-start-T-1-10-100`, `best-cost-T-10-different-reheating-probability`, `best-cost-T-1-10-100`, `best-cost-size-100-different-reheating-probability`,`learned-reheating-probability` and `fixed-p-reheating-probability`.
+`fixed-p-reheating-probability` has a best time for reheating to `0.55`, with a time of around 80s, `learned-reheating-probability` blows it with reheating to `0.25` with a time of 32s, but bear in mind that those run may be greatly affected by luck, as I think are around 2 for those benchmarks, definitely not statistically significant. While `best-cost-T-10-different-reheating-probability` has much more stable times and rpovides best ones for rehating of `0.2` and `0.25` or `0.55` and `0.6`. We also have `best-cost-size-100-different-reheating-probability` that has much more balanced times providing their best of around 200/300s at probabilities `0.2` and `0.3` or `0.55` and `0.65`. Lastly `best-cost-T-1-10-100` compares all `T` coefficients 1, 10 and 100 at a parity of probability reheating: `0.45` and it is very hard to find the best visually as they all have their advantages and disadvantages benchmarks but overall coefficient of 1 seems to work best. Another entry is `best-cost-different-reheating-probability` which is still reheating to a fixed probbaility but with the hold fixed starting temperature of size times 100, it still provides good times, especially for a reheating probability of `0.25`.
+Overall the probbaility reheating is a very good improvement over the spike reheating and deduces the speed of all benchmarks, especially the one for the hotspot3D. We still have some uncertanty of the robability reheating it is best to use, but a prbability in range `0.2-0.3` and `0.45-0.65` is a good choice. Also `greedy-start-T-1-10-100`, is a colelction of greedy starting strategies to change only from intial T coefficient, and similarly to the best cost macro group there is not a single strategy that takes the lead, but it seems to me that the 10 is better as for result in hotspot3D and the vicinity with the best strategy for benchmarks that does not win.
+
+Precomputed start does provide an improvment over times, especially on smaller benchmarks, notably there are the greedy strategies but I think that the temperature start inverted does a better job compared to greedy strategies. Yet, we need to say that the computation time of the starting solution is not comprehended in benchmarks times, as when it was random it is was also this way, as also the simulated annealing algorithm has a requirement of initial solution to start running.
+Definitely an improvement to be considered and added to future strategies.
+
+Special strategies are all standalone strategies that for a "special" characteristic do not fit in any other macro-groups, these are usually more complex to architect. Right now we only have the restart startegy, which takes count of the last plateau cost and if it is stuck in a same or worse cost plateau for more thna three times in a row it will restart from a different starting solution, computed using the inverted centred temperature startegy to compute an initial solution. It uses random start as first initial solution. It is a very good strategy that does not come short from any other startegy, but it has been thought as being able to solve the hardest problem we currently have: `cfd`. It was not succesfull in solving `cfd`.
+
+
+Notably for this week we wanted to benchmark greedy and random start with different starting solutions as we thought that greedy may be the best overall strategy we found so far. Results can be seen by the macro group collection `greedy-vs-random-start-T-10`. The benchmark shows that greedy is slightly better then random start, with median having greedy to be better than random in the hotspot3D benchmark.
+
+
+Then I added a representative macro group that does show the evolution from strategy to strategy, I handy picked each strategy to be one of the most representative per category and it is at the dge of the messiness, but clearly shows what we just stated: probability reheating and greedy are very good improvments from basic classic strategies.
+
+
+Then I also added top macrogroups:
+
+- manual top, which I picked strategies I think are the best
+- computed top, in which we caompute using weights multiplied to times, to enhance the importance of hard benchmarks to see which strategies are the best, for both mean and median times, to spot if numbers say something that I couldn't see by myself. They are computed over all benchmarkes strategies.
+
+For the top manual selection I have:
+
+GREEDY-START_COOLING-RESET-TO-0-45-DYNAMIC-BEST-COST-START-T-COEFF-100_RANDOM-NODE-WITH-SWAP,
+GREEDY-START_COOLING-RESET-TO-0-45-DYNAMIC-BEST-COST-START-T-COEFF-10_RANDOM-NODE-WITH-SWAP,
+GREEDY-START_COOLING-RESET-TO-0-45-DYNAMIC-BEST-COST-START-T-COEFF-1_RANDOM-NODE-WITH-SWAP,
+RANDOM-START_COOLING-RESET-TO-0-45-DYNAMIC-BEST-COST-START-T-COEFF-1-RESTART_RANDOM-NODE-WITH-SWAP,
+RANDOM-START_COOLING-RESET-TO-0-45-DYNAMIC-BEST-COST-START-T-COEFF-10_RANDOM-NODE-WITH-SWAP
+
+Which includes our bias towards greedy.
+
+For the computed ones we get, mean:
+
+TEMPERATURE-START-INVERTED_COOLING-RESET-TO-0-45-DYNAMIC-BEST-COST-START-T-COEFF-1_RANDOM-NODE-WITH-SWAP,
+RANDOM-START_COOLING-RESET-TO-0-45-DYNAMIC-BEST-COST-START-T-COEFF-1_RANDOM-NODE-WITH-SWAP,
+GREEDY-START_COOLING-RESET-TO-0-45-DYNAMIC-BEST-COST-START-T-COEFF-1_RANDOM-NODE-WITH-SWAP,
+RANDOM-START_COOLING-RESET-TO-0-45-DYNAMIC-BEST-COST-START-T-COEFF-1-RESTART_RANDOM-NODE-WITH-SWAP,
+
+median:
+
+TEMPERATURE-START-INVERTED_COOLING-RESET-TO-0-45-DYNAMIC-BEST-COST-START-T-COEFF-1_RANDOM-NODE-WITH-SWAP
+RANDOM-START_COOLING-RESET-TO-0-45-DYNAMIC-BEST-COST-START-T-COEFF-1_RANDOM-NODE-WITH-SWAP,
+GREEDY-START_COOLING-RESET-TO-0-45-DYNAMIC-BEST-COST-START-T-COEFF-1_RANDOM-NODE-WITH-SWAP,
+RANDOM-START_COOLING-RESET-TO-0-45-DYNAMIC-BEST-COST-START-T-COEFF-1-RESTART_RANDOM-NODE-WITH-SWAP,
+
+where both have the list from best to worst. These results put at the top a computed start strategy: the temperature start inverted instead of greedy, next the random start cooling and following the greedy, which shows to be very solid, ednig with the special restart. One thing that I would like to point out is that all strategies have the fixed probability reheating to 0.45, and a startign coefficient of 1 isntead of 10 or 100.
+This list confirms that the rehating to probability, and the computed start do have an advantage and it is probably better to have a T coefficient of 1.
 
 ## Websites used
 
@@ -878,13 +1103,13 @@ Dynamic temperature reset percentage: keep best promising level from previous be
 spike: in %: se plateau è più alto di quello di prima più spike, meno o uguale un po' di meno: così che accetti meno soluzioni se migliora e il costo sale di meno: non facciamola uguale alla temperatura iniziale. Esperimenti con: uno con il 5% uno con il 50%. Potrebbe essere già implementato dallo spike con dynamic
 
 
-+ + Temperatura iniziale correlata al problema
-+ Usiamo le dimensioni del grafo del problema per la temperatura e non la size: * 1/10/100: su un singolo benchmark in cui trova la soluzione guardare quello che ci mette di meno e come si comportanto a 3 soluzioni iniziali: per le 3 temperature 3 set ognuna con una configurazione iniziale: così vediamo come si comportano
+Temperatura iniziale correlata al problema
+Usiamo le dimensioni del grafo del problema per la temperatura e non la size: * 1/10/100: su un singolo benchmark in cui trova la soluzione guardare quello che ci mette di meno e come si comportanto a 3 soluzioni iniziali: per le 3 temperature 3 set ognuna con una configurazione iniziale: così vediamo come si comportano
 
-+ 9 esperimenti per ogni t * 100 (100 o quale si comporta meglio al primo punto +?): 3 schedule diversi:
+9 esperimenti per ogni t * 100/10/1 con 3 schedule diversi:
 
 - 3 setssa configurazione iniziale e stesso model number
-- 3 con lo stesso model number: 4 e configurazioni iniziali diverse
+- 3 con lo stesso model number (4) e configurazioni iniziali diverse
 - 3 mix: diverse schedules (mode_number) e configurazioni iniziali
 
 - stessa schedule == stesso numero in break a `model_number` (controlla che il seed che usa per la generazione sia fissato e non influisca) per schedule diverse cambia `if model_number == 4`: # 4 a linea 928 a 1 di `monomap.py`
@@ -893,12 +1118,77 @@ spike: in %: se plateau è più alto di quello di prima più spike, meno o ugual
 
 Cambiare la scala della temperatura alla probabilità: Passiamo da temperatura a % di probabilità di selezionare una soluzione peggiore, così che per noi abbia più senso
 
+### 13.04.26
+
+Check that the start of the two following benchmarks:
+
+/Users/eliariva/Documents/Puddi/USI/BachelorProject/MonoMap/benchmarks-results/hotspot3D/20x20/COOLING-RESET-TO-0-5-DYNAMIC-BEST-COST-START-T-COEFF-1_RANDOM-NODE-WITH-SWAP-SAME-INIT-CONF-MODEL-NUMBER-4/2026-04-11T13-25-29
+
+/Users/eliariva/Documents/Puddi/USI/BachelorProject/MonoMap/benchmarks-results/hotspot3D/20x20/COOLING-RESET-TO-0-5-DYNAMIC-BEST-COST-START-T-COEFF-100_RANDOM-NODE-WITH-SWAP-SAME-INIT-CONF-MODEL-NUMBER-4/2026-04-10T21-43-01
+
+Have the same starting cost as the graph does not make it seem like it is.
+
+
+Another variation of temperature reheating: Per scaldare come $\Delta c$ prendiamo l'ultimo jump verso il basso: l'ultimo $\Delta c$ negativo che ho trovato come $\Delta C$ per calcolare il reheating della temperatura ad una probabilità
+
+Implement hold methods of reheating and make a few benchmarks pictures to then show to Cristian, I should have collected them in benchmakrs and to show them to him last week, should have been more proper. We do:
+
+- learned rehating
+- average solution cost
+- new implementation: last delta to plateau
+
+run only on hotspot3D
+
+1/10/100 * nodes in dfg as initial temperature: do all benchmarks for each coefficient with best strategy
+Testare più cfd problemi per vedere se falliscono proprio tutti con la strategia migliore
+
+
+Start solution calculated, make the three algorithms:
+
+- Start from initial overlapping PEs and select random position in direct neighbor to open them aout (Should be already implemented)
+- From greedy cost function: I have two functions costs, which are overlapping costs and regular solutio cost, I place all operaitons on the same central PE and for each I select the next PE that minimizes both function, once the overlapping cost is zero we start the regulat SA
+- From outside list: make a PE list that are not yet positioned, positions one at random, then postion others at random in this way: if cost remains the same (best position) position it, else we accept it folllowing a temperature probability, and i continue until all PEs are placed, if so we start regular SA
+- Extra version: use the temperature SA into a current SA routine, then when we reach the same plateau or worse after x (maybe 2) reheats we rebuild the solution from the beginning and repeat SA
+
+and benchmark three starting solution with all sets
+
+
+Use networkx to print statistics about the graph and understand what it changes between cfd and hotspot3D graph: identify which nodes are a problem and which characteristics make them a problem.
+
+### 27.04.26
+
+Benchmark Greedy also for \*100 for initial T (\* 1/10/100): all benchmarks, we skip cfd
+
+Controllare qualitativamente gli algoritmi tra di loro per capire quale sia il migliore (post processing dei CSV in un unico CSV con visuale orizzontale: a sinistra il nome degli algoritmi e strategie sulle colonne, poi entries i tempi: tutti i CSV che abbiamo collezionato)
+una tabella con average e un'altra, separate da una riga bianca, con mediano delle run se c'è senno solo average
+
+### 04.05.26
+
+Cercaro macrogruppi all'interno delle benchmarks e suddividere così i dati, poi estrarne i più rappresentativi e/o migliori
+Scelta manuale dei gruppi anche potrebbe andare bene
+magari fare più confronti tra categorie
+5/6 categorie più rappresentative
+
+benchmarks con configurazioni inziali diverse con random e con greedy e cercare il mediano di 10+ run quale sia migliore
+
 ### Extra
 
 + + extra: anything that follows are extra ideas I got while working
++ heatmap like zones of probability: each node has a heatmap probability of the CGRA based on where its dependencies are positioned withoin the CGRA, the more dependencies are in a zone the more probable such PE will be to be picked when such operation is moved
+
 + maybe if time look at how you can draw the space cost in a 3D plot (3D Contour) with valleys even if it is a more than a 3D space
 
 + Fixed temperature stages
 + do benchmarks also for fixed temperature ranges, like: 100 items at 0.5 accept rate, 300 at 0.2, 750 at 0.05 etc, set P as fixed values independent from cost, or T
 
 + what about going to next temperature level when the acceptance rate arrives to be equal to the temperature? the meaning is to arrive to a point where the expected probability of selection is met, which may be correlated to the temperature level reaching the correct plateau state, equilibrium for that temperature as Timberwolf suggested
+
++ Addition to the random movement algorithm: When you select a node to be moved check that it does not have a loop dependency, if so move it else take the starting dependency node and move it with the current node so that the dependency is respected: make the new placement and for the loop dependency node take the valid nodes for dependency at random select one and place it there or swap it with the ndoe that is already there. Then test it only on CFD problem.
+- Remember to make it two way, if one node gives or receives a loop dependency with another one it has to follow the couple swap
+
++ dopo
++ nodi con tante out dependencies (solo su nodi con out degree > 2/3 o numero di figli > connettivity degree): i fligli possono essere posizionati solo in un intorno del nodo parente: uno in cui random e prendere un nodo random, guardare il padre e posizionare negli hop one del padre se sono pieni: facciamo lo swap con un nodo lì: benchmarks cfd hotspot3D, terzo con più nodi
+
++ Follows the heatmap of probabilities: look at all parents of a single node, and draw the heatmap as follows: start by colleting parent positions, same position has 1 probability, 1 hop has 1/2, two hops have 1/4 and so on for each parent, then you normalize probabilities. Implement also the staretgy
+
++ pensare: "freezare" le connessioni dei nodi posizionati bene: parente e figli (da considerare)
