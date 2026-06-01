@@ -53,6 +53,7 @@ def parse_output(output):
     monomorphism_found = False
     final_schedule = {}
     reading_schedule = False
+    pick_next_stats = ""
 
     for raw_line in output.splitlines():
         line = raw_line.strip()
@@ -120,6 +121,9 @@ def parse_output(output):
         if "Monomorphism found!" in line:
             monomorphism_found = True
 
+        if "Pick-next stats:" in line:
+            pick_next_stats = line.split("Pick-next stats:", 1)[1].strip()
+
     return {
         "RecII": recii,
         "ResII": resii,
@@ -134,8 +138,17 @@ def parse_output(output):
         "monomorphism_found": monomorphism_found,
         "final_pe_pressure": final_pe_pressure,
         "final_schedule": str(final_schedule),
+        "pick_next_stats": pick_next_stats,
     }
 
+def ensure_text(value):
+    if value is None:
+        return ""
+
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+
+    return value
 
 def run_benchmark(script, bench, x, y, d, i_value):
     path = f"{BENCH_DIR}/{bench}/kernel1_edges"
@@ -171,16 +184,16 @@ def run_benchmark(script, bench, x, y, d, i_value):
             text=True,
             timeout=TIMEOUT,
         )
-        output = proc.stdout or ""
-        stderr = proc.stderr or ""
+        output = ensure_text(proc.stdout)
+        stderr = ensure_text(proc.stderr)
         exit_code = proc.returncode
 
         if proc.returncode != 0:
             status = "ERROR"
 
     except subprocess.TimeoutExpired as e:
-        output = e.stdout or ""
-        stderr = e.stderr or ""
+        output = ensure_text(e.stdout)
+        stderr = ensure_text(e.stderr)
         status = "TIMEOUT"
         timed_out = True
         exit_code = -1
@@ -218,6 +231,7 @@ def run_benchmark(script, bench, x, y, d, i_value):
         parsed["monomorphism_found"],
         parsed["final_pe_pressure"],
         parsed["final_schedule"],
+        parsed["pick_next_stats"],
     ]
 
 
@@ -227,6 +241,7 @@ def main():
     parser.add_argument("-o", required=True, help="Output CSV file")
     parser.add_argument("-x", type=int, required=True)
     parser.add_argument("-y", type=int, required=True)
+    
     parser.add_argument("-d", type=int, required=True)
     parser.add_argument(
         "-base_i",
@@ -278,6 +293,7 @@ def main():
             "monomorphism_found",
             "final_pe_pressure",
             "final_schedule",
+            "pick_next_stats",
         ])
 
         for bench in benchmarks:
