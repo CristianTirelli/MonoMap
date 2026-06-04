@@ -261,7 +261,7 @@ def backtracking(dfg, arch, size_x, size_y):
         parent_pes = mapped_parent_pes(v)
 
         # least-constraining value (LCV) ordering
-        # prefer the values that eliminate the fewest options for neighboring nodes
+        # prefer values that appear in fewer unmapped neighbors' current domains
         # but first prioritize values whose PE matches one of the already mapped parents
         values = sorted(
             dom,

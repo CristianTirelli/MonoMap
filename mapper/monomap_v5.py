@@ -70,7 +70,7 @@ def getMobilityValue(kms, node):
     return mobility
 
 # -----------------------------------------------------------------------------
-# BACKTRACKING + nodes based on smallest mapping domain (J)
+# BACKTRACKING + fixed topological-order node selection (J)
 # This version extends the baseline DFS backtracking mapper with stronger
 # constraint propagation and improved value ordering heuristics.
 
@@ -81,10 +81,9 @@ def getMobilityValue(kms, node):
 # the other endpoint must map to an adjacent architecture node
 
 # Improvements over previous version:
-#  - dynamic domains (recomputed based on current partial assignment)
-#  - MRV (minimum remaining values) node ordering
-#  - degree-based tie-breaking
-#  - forward checking (fail early on empty domains)
+#  - dynamic domains
+#  - fixed topological-order node selection
+#  - forward checking
 #  - least-constraining value ordering
 # -----------------------------------------------------------------------------
 def backtracking(dfg_undir, arch, size_x, size_y, topo_order):
@@ -157,7 +156,7 @@ def backtracking(dfg_undir, arch, size_x, size_y, topo_order):
             return False
 
         # least-constraining value (LCV) ordering
-        # prefer the values that eliminate the fewest options for neighboring nodes
+        # prefer values that appear in fewer unmapped neighbors' current domains
         values = sorted(
             dom,
             key=lambda a: sum(

@@ -89,7 +89,7 @@ def recurrent_first_order(dfg, topo_order):
     return cycle_first + rest
 
 # -----------------------------------------------------------------------------
-# BACKTRACKING + nodes based on smallest mapping domain (J)
+# BACKTRACKING + recurrent-first topological-order node selection (J)
 # This version extends the baseline DFS backtracking mapper with stronger
 # constraint propagation and improved value ordering heuristics.
 
@@ -100,10 +100,10 @@ def recurrent_first_order(dfg, topo_order):
 # the other endpoint must map to an adjacent architecture node
 
 # Improvements over previous version:
-#  - dynamic domains (recomputed based on current partial assignment)
-#  - MRV (minimum remaining values) node ordering
-#  - degree-based tie-breaking
-#  - forward checking (fail early on empty domains)
+#  - dynamic domains
+#  - recurrent-cycle nodes prioritized first
+#  - fixed topological-order node selection for remaining nodes
+#  - forward checking
 #  - least-constraining value ordering
 # -----------------------------------------------------------------------------
 def backtracking(dfg_undir, arch, size_x, size_y, map_order):
@@ -150,8 +150,9 @@ def backtracking(dfg_undir, arch, size_x, size_y, map_order):
     # VARIABLE SELECTION: fixed topological order
     #
     # Strategy:
-    # - process DFG nodes in a precomputed topological order
-    # - always choose the first node in that order that is not yet assigned
+    # - prioritize nodes that participate in recurrence cycles
+    # - then process remaining nodes in topological order
+    # - always choose the first unassigned node in that precomputed order
     def pick_next():
         for v in map_order:
             if v not in assign:
@@ -176,7 +177,7 @@ def backtracking(dfg_undir, arch, size_x, size_y, map_order):
             return False
 
         # least-constraining value (LCV) ordering
-        # prefer the values that eliminate the fewest options for neighboring nodes
+        # prefer values that appear in fewer unmapped neighbors' current domains
         values = sorted(
             dom,
             key=lambda a: sum(

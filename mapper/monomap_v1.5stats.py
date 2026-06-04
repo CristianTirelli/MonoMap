@@ -83,6 +83,7 @@ def getMobilityValue(kms, node):
 # Improvements over previous version:
 #  - dynamic domains (recomputed based on current partial assignment)
 #  - MRV (minimum remaining values) node ordering
+#  - descendants-count tie-breaking before degree
 #  - degree-based tie-breaking
 #  - forward checking (fail early on empty domains)
 #  - least-constraining value ordering
@@ -247,6 +248,11 @@ def backtracking(dfg_undir, dfg_directed, arch, size_x, size_y):
                     pick_stats["fallback_needed"] += 1
                     pick_stats["fallback_decisive"] += 1
 
+
+        # Sort by:
+        #   1. smallest domain size (MRV)
+        #   2. most descendants
+        #   3. highest degree
         candidates.sort()
 
         _, _, _, v, dom = candidates[0]
@@ -270,7 +276,7 @@ def backtracking(dfg_undir, dfg_directed, arch, size_x, size_y):
             return False
 
         # least-constraining value (LCV) ordering
-        # prefer the values that eliminate the fewest options for neighboring nodes
+        # prefer values that appear in fewer unmapped neighbors' current domains
         values = sorted(
             dom,
             key=lambda a: sum(

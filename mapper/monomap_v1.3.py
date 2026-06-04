@@ -174,7 +174,7 @@ def backtracking(dfg_undir, arch, size_x, size_y):
             return False
 
         # -------------------------------------------------------------
-        # PE-pressure node ordering
+        # PE-pressure value ordering
         #
         # pressure_mode:
         #   "min" -> prefer less loaded PEs first

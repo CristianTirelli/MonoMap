@@ -93,7 +93,7 @@ def get_critical_path(dfg):
     return critical_path, critical_rank
 
 # -----------------------------------------------------------------------------
-# BACKTRACKING + nodes based on smallest mapping domain (J)
+# BACKTRACKING + critical-path-first MRV node ordering (J)
 # This version extends the baseline DFS backtracking mapper with stronger
 # constraint propagation and improved value ordering heuristics.
 
@@ -103,11 +103,10 @@ def get_critical_path(dfg):
 # - Local adjacency consistency: or every DFG edge (u, v), if one endpoint has already been mapped,
 # the other endpoint must map to an adjacent architecture node
 
-# Improvements over previous version:
-#  - dynamic domains (recomputed based on current partial assignment)
-#  - MRV (minimum remaining values) node ordering
+#  - critical-path-first node ordering
+#  - MRV node ordering within critical-path priority
 #  - degree-based tie-breaking
-#  - forward checking (fail early on empty domains)
+#  - forward checking
 #  - least-constraining value ordering
 # -----------------------------------------------------------------------------
 def backtracking(dfg_undir, arch, size_x, size_y, critical_rank=None):
@@ -152,13 +151,15 @@ def backtracking(dfg_undir, arch, size_x, size_y, critical_rank=None):
         return dom
 
     # -------------------------------------------------------------------------
-    # VARIABLE SELECTION: MRV (min remaining values)
+    # VARIABLE SELECTION: critical-path-first + MRV
     #
     # Strategy:
-    # - select the unassigned node with the smallest current domain
-    # - this prioritizes the most constrained variables first
+    # - prioritize nodes on the critical path
+    # - among nodes with the same critical-path priority,
+    #   select the node with the smallest current domain (MRV)
     #
-    # Tie-break: higher graph degree first (more connected nodes are likely harder)
+    # Tie-break:
+    # - higher graph degree first
     # -------------------------------------------------------------------------
     def pick_next():
         candidates = []
@@ -201,7 +202,7 @@ def backtracking(dfg_undir, arch, size_x, size_y, critical_rank=None):
             return False
 
         # least-constraining value (LCV) ordering
-        # prefer the values that eliminate the fewest options for neighboring nodes
+        # prefer values that appear in fewer unmapped neighbors' current domains
         values = sorted(
             dom,
             key=lambda a: sum(

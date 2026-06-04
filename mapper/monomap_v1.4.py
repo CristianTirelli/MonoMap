@@ -86,6 +86,7 @@ def getMobilityValue(kms, node):
 #  - degree-based tie-breaking
 #  - forward checking (fail early on empty domains)
 #  - least-constraining value ordering
+#  - PE-pressure value ordering
 # -----------------------------------------------------------------------------
 def backtracking(dfg_undir, arch, size_x, size_y):
 
@@ -174,7 +175,7 @@ def backtracking(dfg_undir, arch, size_x, size_y):
             return False
 
         # -------------------------------------------------------------
-        # PE-pressure node ordering
+        # PE-pressure value ordering
         #
         # pressure_mode:
         #   "min" -> prefer less loaded PEs first

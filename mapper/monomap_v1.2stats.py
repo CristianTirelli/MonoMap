@@ -278,7 +278,7 @@ def backtracking(dfg_undir, arch, size_x, size_y):
             return False
 
         # least-constraining value (LCV) ordering
-        # prefer the values that eliminate the fewest options for neighboring nodes
+        # prefer values that appear in fewer unmapped neighbors' current domains
         values = sorted(
             dom,
             key=lambda a: sum(

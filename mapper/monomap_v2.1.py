@@ -70,7 +70,7 @@ def getMobilityValue(kms, node):
     return mobility
 
 # -----------------------------------------------------------------------------
-# BACKTRACKING + nodes with highest degree (J)
+# BACKTRACKING + busiest-time + nodes with highest degree (J)
 # This version extends the baseline DFS backtracking mapper with alternative
 # variable ordering based on graph structure
 
@@ -81,7 +81,8 @@ def getMobilityValue(kms, node):
 # the other endpoint must map to an adjacent architecture node
 
 # Improvements over previous version:
-#  - highest-degree node ordering (instead of MRV / busiest-time)
+#  - busiest-time-step selection
+#  - highest-degree node ordering within the selected time step
 
 # Note:
 #  - this version prioritizes structurally constrained nodes (high connectivity)

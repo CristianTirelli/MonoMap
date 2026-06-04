@@ -86,6 +86,7 @@ def getMobilityValue(kms, node):
 #  - degree-based tie-breaking
 #  - forward checking (fail early on empty domains)
 #  - least-constraining value ordering
+#  - conflict-directed backjumping using conflict sets
 # -----------------------------------------------------------------------------
 def backtracking(dfg_undir, arch, size_x, size_y):
 
@@ -268,7 +269,7 @@ def backtracking(dfg_undir, arch, size_x, size_y):
             return False, set(initial_conflict)
 
         # least-constraining value (LCV) ordering
-        # prefer the values that eliminate the fewest options for neighboring nodes
+        # prefer values that appear in fewer unmapped neighbors' current domains
         values = sorted(
             dom,
             key=lambda a: sum(
