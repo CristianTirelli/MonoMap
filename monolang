@@ -22,9 +22,11 @@
 # -l [extra-label]    adds an extra label [extra-label] to the end of name of the output file, it is
 #                     helpful when monitoring multiple automatic runs of the same algorithm 
 
-# -0 [algoname]       omits completely a benchmark when running automated
+# -o [algoname]       omits completely a benchmark when running automated
 
-# -I [size]           runs infintely looping over benchmarks when running automated, all of them if [size] is snot specified, else only benchmarks of size [size]
+# -I [all | [size] | [algoname]-[size]]   runs infintely looping over benchmarks when running automated, all of them if
+#                                         [size] is not specified, else only benchmarks of size [size]. If also [algoname]
+#                                         is specified it will run only that benchmark infinitely. all runs all sizes and algos
 
 
 F=""
@@ -47,7 +49,10 @@ R=0
 
 OMIT_BENCHMARK=""
 INFINITE=0
+INFINITE_SIZE_NAME=""
 INFINITE_SIZE=0
+INFINITE_NAME=""
+
 
 # might be better to filter arguments better by allowing multiple characters flags
 # also to align flags with monomap.py
@@ -69,7 +74,7 @@ while getopts "f:p:x:y:d:i:s:t:ban:j:l:ro:I:" opt; do
     r) R=1 ;;
     o) OMIT_BENCHMARK=$OPTARG ;;
     I) INFINITE=1
-       INFINITE_SIZE=$OPTARG ;;
+       INFINITE_SIZE_NAME=$OPTARG ;;
     \?) echo "Invalid option -$OPTARG" >&2; exit 1 ;;
   esac
 done
@@ -94,6 +99,22 @@ fi
 if [ -n "$JUMP_TO" ] && [ "$INFINITE" -eq 1 ]; then
   echo "Usage Error: -j (jump) and -I (infinite) cannot be used at the same time"
   exit 1
+fi
+
+# parse infinite size and name
+if [ "$INFINITE_SIZE_NAME" = "all" ]; then
+  :
+else
+  case "$INFINITE_SIZE_NAME" in
+    *-*)
+      INFINITE_NAME="${INFINITE_SIZE_NAME%-*}"
+      INFINITE_SIZE="${INFINITE_SIZE_NAME##*-}"
+      ;;
+    *)
+      INFINITE_NAME=""
+      INFINITE_SIZE="$INFINITE_SIZE_NAME"
+      ;;
+  esac
 fi
 
 ADD_FLAGS=""
@@ -142,7 +163,7 @@ run_benchmark() {
 
     # for automated we make it run 10 times with different sizes:
     for size in 2 5 10 20; do
-      if [ "$INFINITE_SIZE" -ne 0 ] && [ "$size" -ne "$INFINITE_SIZE" ]; then
+      if [ "$INFINITE" -ne 0 ] && [ "$INFINITE_SIZE" -ne 0 ] && [ "$size" -ne "$INFINITE_SIZE" ]; then
         continue
       fi
 
@@ -221,6 +242,13 @@ if [ "$A" -eq 1 ]; then
         if [ -f "$folder/kernel1_edges" ]; then
           # if kernel1_edges is found execute
           algorithm_name=$(basename "$folder")
+
+          # try to skip algo until the one to jump to is found
+          if [[ "$INFINITE" -eq 1 && "$INFINITE_NAME" != "" && "$INFINITE_NAME" != "$algorithm_name" ]]; then
+            echo "Skipping $algorithm_name looking for desired benchmark $INFINITE_NAME"
+            continue
+          fi
+
           if [ -n "$OMIT_BENCHMARK" ] && [ "$algorithm_name" = "$OMIT_BENCHMARK" ]; then
             echo "Skipping omitted benchmark $algorithm_name"
             continue
@@ -240,6 +268,13 @@ if [ "$A" -eq 1 ]; then
             # if folder has kernel edges we execute it
             if [ -d "$subfolder" ] && [ -f "$subfolder/kernel1_edges" ]; then
               algorithm_name=$(basename "$subfolder")
+
+              # try to skip algo until the one to jump to is found
+              if [[ "$INFINITE" -eq 1 && "$INFINITE_NAME" != "" && "$INFINITE_NAME" != "$algorithm_name" ]]; then
+                echo "Skipping $algorithm_name looking for desired benchmark $INFINITE_NAME"
+                continue
+              fi
+
               if [ -n "$OMIT_BENCHMARK" ] && [ "$algorithm_name" = "$OMIT_BENCHMARK" ]; then
                 echo "Skipping omitted benchmark $algorithm_name"
                 continue

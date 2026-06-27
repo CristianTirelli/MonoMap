@@ -377,6 +377,16 @@ class SimulatedAnnealingSpaceSearch:
         # post CONSTANTs initialization
         self.__post_costant_initialization__()
 
+        # we set benchmarker and recorder if present
+        if self.BENCHMARK:
+            self.BENCHMARK.set_algorithm_type(self.ID)
+        if self.RECORDER:
+            self.RECORDER.set_algorithm_type(self.ID)
+
+        print()
+        print("*** START SA ROUTINE ***\n")
+        self.start_time = time.process_time()
+
         # Generate starting random solution and evaluate it
         self.initial_sol_generator()
         # first solution: deep copy
@@ -402,15 +412,7 @@ class SimulatedAnnealingSpaceSearch:
 
         self.iterations = 1
 
-        # we set benchmarker and recorder if present
-        if self.BENCHMARK:
-            self.BENCHMARK.set_algorithm_type(self.ID)
-        if self.RECORDER:
-            self.RECORDER.set_algorithm_type(self.ID)
-
-        print()
-        print("*** START SA ROUTINE ***\n")
-        self.start_time = time.process_time()
+        # Main loop
         self.temperature_routine()
         total_time = time.process_time() - self.start_time
         print("\n*** END SA ROUTINE ***\n")

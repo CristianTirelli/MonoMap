@@ -1,14 +1,20 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Self
 
 from analytics.utils import parse_optional_int, parse_optional_float, parse_optional_path, parse_optional_str
 
+# these are more or less timeouts I put for different benchmarks
+EXACT_TIMEOUTS = [500.0, 600.0, 1800.0, 3000.0, 3600.0, 4000.0]
+MARGIN_SECONDS = 0.5
 
 # reach row from any CSV can by described by
 @dataclass
 class Row():
+    # additional computed fields
+    is_timeout: bool
+
     # str of syntax [algorithm name]
     # where [algorithm name] is a string
     algorithm: str
@@ -66,7 +72,18 @@ class Row():
 
     @staticmethod
     def parse_row(row: dict, archived_data_prefix: Optional[str]) -> Self:
+        time_seconds = float(row["time_seconds"])
+        cost = int(row["cost"])
+
+        # # if we dont find a solution with cost == 0, and the benchmark is saved we have then timed out
+        # # for sure
+        is_timeout = cost != 0
+
         return Row(
+            # computed data
+            is_timeout=is_timeout,
+
+            # CSV data
             algorithm=row["algorithm"],
 
             dfg_nodes=int(row["dfg_nodes"]),
@@ -75,8 +92,8 @@ class Row():
 
             sa_algorithm_type=row["sa_algorithm_type"],
 
-            time_seconds=float(row["time_seconds"]),
-            cost=int(row["cost"]),
+            time_seconds=time_seconds,
+            cost=cost,
             start_configuration_cost=parse_optional_int(row.get("start_configuration_cost", "")),
             iterations=int(row["iterations"]),
             items_each_iteration=parse_optional_int(row.get("items_each_iteration", "")),
@@ -110,20 +127,54 @@ class Row():
 @dataclass
 class AnalyticsColumn():
     sa_algorithm_type: str
+
+    algorithm_mean_timeout: dict[str, bool | None]
+    algorithm_median_timeout: dict[str, bool | None]
+
     algorithm_mean_time: dict[str, float | None]
     algorithm_median_time: dict[str, float | None]
 
-    def __to_representative__(self, macro_group: str):
+    algorithm_mean_time_norm: dict[str, float | None]
+    algorithm_median_time_norm: dict[str, float | None]
+
+    algorithm_mean_iteration: dict[str, float | None]
+    algorithm_median_iteration: dict[str, float | None]
+
+    def __to_representative__(
+            self,
+            macro_group: str,
+            id: str = ""):
         return AnalyticsRepresentativesColumn(
             self.sa_algorithm_type, 
             macro_group,
+            self.algorithm_mean_timeout,
+            self.algorithm_median_timeout,
             self.algorithm_mean_time,
-            self.algorithm_median_time)
+            self.algorithm_median_time,
+            self.algorithm_mean_time_norm,
+            self.algorithm_median_time_norm,
+            self.algorithm_mean_iteration,
+            self.algorithm_median_iteration,
+            id=id)
 
 @dataclass
 class AnalyticsRepresentativesColumn():
     sa_algorithm_type: str
     macro_group: str
+
+    algorithm_mean_timeout: dict[str, bool | None]
+    algorithm_median_timeout: dict[str, bool | None]
+
     algorithm_mean_time: dict[str, float | None]
     algorithm_median_time: dict[str, float | None]
+
+    algorithm_mean_time_norm: dict[str, float | None]
+    algorithm_median_time_norm: dict[str, float | None]
+
+    algorithm_mean_time_norm_by_group: dict[str, float | None] = field(default_factory=dict, kw_only=True)
+    algorithm_median_time_norm_by_group: dict[str, float | None] = field(default_factory=dict, kw_only=True)
+
+    algorithm_mean_iteration: dict[str, float | None]
+    algorithm_median_iteration: dict[str, float | None]
+
     id: str = ""

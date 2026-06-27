@@ -19,9 +19,6 @@ class OpeningStart(SimulatedAnnealingSpaceSearch):
 
         size = self.size_x * self.size_y
 
-        # invece di andare a caso guardare il neghbour con la funzione costo e
-        # scegliere la posizione che minimizza il costo
-
         # Very naive: we place all pes on the same tile for each schedule
         middle = size // 2
 
@@ -45,12 +42,13 @@ class OpeningStart(SimulatedAnnealingSpaceSearch):
                         pe for pe in [
                             cnpe + 1,
                             cnpe - 1,
-                            cnpe + self.size_x,
-                            cnpe - self.size_x
+                            cnpe + self.size_y,
+                            cnpe - self.size_y
                         ] if 0 <= pe < size
                     ]
 
                     curr_node_pe[n] = self.randgen_start_configuration.choice(adjacent_pes)
+
 
         # build curr_pe_nodes
         for n, pe in curr_node_pe.items():

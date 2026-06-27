@@ -1,7 +1,6 @@
 import math
 from pathlib import Path
 
-import matplotlib
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 import networkx as nx
@@ -14,6 +13,9 @@ from matplotlib import cm, rc
 
 # Could be improved and made into a class
 
+# font Charter
+import matplotlib.pyplot as plt
+plt.rcParams["font.family"] = "Charter"
 
 def save_figure(
         fig: Figure,
@@ -167,23 +169,82 @@ def plot_unique_figure_iteratons(
 
     X = range(1, x + 1)
 
+    COST_LINE_WIDTH = 6
+    TEMPERATURE_LINE_WIDTH = 4
+    SMA_LINE_WIDTH = 3
+    
+    TITLE_FONT_LABEL = 470
+    TITLE_FONT_SIZE = 55
+
+    AXIS_LABELS_FONT_LABEL = 400
+    AXIS_LABELS_FONT_SIZE = 45
+    AXIS_LABEL_PAD = 30
+
+    TICKS_LINE_WIDTH = 3
+    TICKS_LINE_LENGTH = 23
+    TICKS_FONT_SIZE = 35
+
+    LEGEND_TEXT_SIZE = 40
+    LEGEND_LINE_LENGTH = 1.0
+    LEGEND_SPACE_ITEM_LINE = 0.5
+    LEGEND_SPACE_ITEMS = 0.5
+    LEGEND_BORDER_PADDING = 1.0
+    LEGEND_MARKER_SIZE = 1.0
+
+
     # cost
     color = 'tab:blue'
-    ax1.set_xlabel('iterations')
-    ax1.set_ylabel('cost', color=color)
+    ax1.set_xlabel(
+        'Iterations',
+        fontsize=AXIS_LABELS_FONT_SIZE,
+        fontweight=AXIS_LABELS_FONT_LABEL,
+        labelpad=AXIS_LABEL_PAD)
+    ax1.set_ylabel(
+        'Cost',
+        color=color,
+        fontsize=AXIS_LABELS_FONT_SIZE,
+        fontweight=AXIS_LABELS_FONT_LABEL,
+        labelpad=AXIS_LABEL_PAD)
 
-    ax1.plot(X, costs, color=color, label="Cost")
+    ax1.plot(
+        X,
+        costs,
+        color=color,
+        label="Cost",
+        linewidth=COST_LINE_WIDTH)
 
     costs_sma_slow: None | list[float] = kwargs.get("costs_sma_slow", None)
     if costs_sma_slow is not None and len(costs_sma_slow) > 0:
-        ax1.plot(X, costs_sma_slow, color='violet', label="SMA Slow", alpha=0.8)
+        ax1.plot(
+            X,
+            costs_sma_slow,
+            color='darkviolet',
+            label="SMA Slow",
+            alpha=0.8,
+            linewidth=SMA_LINE_WIDTH)
 
     costs_sma_fast: None | list[float] = kwargs.get("costs_sma_fast", None)
     if costs_sma_fast is not None and len(costs_sma_fast) > 0:
-        ax1.plot(X, costs_sma_fast, color='yellow', label="SMA Fast", alpha=0.4)
+        ax1.plot(
+            X,
+            costs_sma_fast,
+            color='darkgreen',
+            label="SMA Fast",
+            alpha=0.4,
+            linewidth=SMA_LINE_WIDTH)
 
-    ax1.tick_params(axis='y', labelcolor=color)
-    ax1.tick_params(axis='x')
+    ax1.tick_params(
+        axis='y',
+        color=color,
+        labelcolor=color,
+        labelsize=TICKS_FONT_SIZE,
+        width=TICKS_LINE_WIDTH,
+        length=TICKS_LINE_LENGTH)
+    ax1.tick_params(
+        axis='x',
+        labelsize=TICKS_FONT_SIZE,
+        width=TICKS_LINE_WIDTH,
+        length=TICKS_LINE_LENGTH)
 
     if xscale_log_cost:
         ax1.set_xscale('log')
@@ -194,24 +255,55 @@ def plot_unique_figure_iteratons(
     ax2 = ax1.twinx()
 
     color = 'tab:red'
-    ax2.set_ylabel('temperature', color=color)
+    ax2.set_ylabel(
+        'Temperature',
+        color=color,
+        fontsize=AXIS_LABELS_FONT_SIZE,
+        fontweight=AXIS_LABELS_FONT_LABEL,
+        labelpad=AXIS_LABEL_PAD)
 
     tround = [round(float(t), 2) if isinstance(t, (float, np.float64)) else t for t in temperatures]
-    ax2.plot(X, tround, color=color, label="Temperature", alpha=0.4)
-    ax2.tick_params(axis='y', labelcolor=color)
+    ax2.plot(
+        X,
+        tround,
+        color=color,
+        label="Temperature",
+        alpha=0.4,
+        linewidth=TEMPERATURE_LINE_WIDTH)
+    ax2.tick_params(
+        axis='y',
+        which='major',
+        color=color,
+        labelcolor=color,
+        labelsize=TICKS_FONT_SIZE,
+        width=TICKS_LINE_WIDTH,
+        length=TICKS_LINE_LENGTH)
 
     if xscale_log_temp:
         ax2.set_xscale('log')
     if yscale_log_temp:
         ax2.set_yscale('log')
 
-    ax1.set_title('Cost and Temperature')
+    ax1.set_title(
+        'Cost and Temperature',
+        fontsize=TITLE_FONT_SIZE,
+        fontweight=TITLE_FONT_LABEL,
+        pad=int(AXIS_LABEL_PAD * 0.85))
     ax1.grid(True)
 
     # plot both legends
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2)
+    ax1.legend(
+        lines1 + lines2,
+        labels1 + labels2,
+        fontsize=LEGEND_TEXT_SIZE,
+        handlelength=LEGEND_LINE_LENGTH,
+        handletextpad=LEGEND_SPACE_ITEM_LINE,
+        labelspacing=LEGEND_SPACE_ITEMS,
+        borderpad=LEGEND_BORDER_PADDING,
+        markerscale=LEGEND_MARKER_SIZE)
+    fig.tight_layout()
     return fig
 
 

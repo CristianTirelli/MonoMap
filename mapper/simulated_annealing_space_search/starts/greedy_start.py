@@ -11,6 +11,9 @@ class GreedyStart(SimulatedAnnealingSpaceSearch):
     overlapping_nodes: list[int] = field(default_factory=list, init=False)
 
     def nodes_pes_overlap_count(self, curr_node_pe: dict[int, int], build_overlapping_nodes: bool = False):
+        # improve: if you iterate over each schedule time t, collect pe from dictionary,for each duplicate +1, and exra +1
+        # after when all introduction is written
+        # and all implementation without this exact piece
         overlaps = 0
         if build_overlapping_nodes:
             self.overlapping_nodes.clear()
@@ -23,15 +26,12 @@ class GreedyStart(SimulatedAnnealingSpaceSearch):
                     if nneighbor in curr_node_pe and curr_node_pe[nneighbor] == curr_node_pe[n]:
                         overlaps += 1
 
-                        # print(f"        adding overlap in pe {curr_node_pe[nneighbor]} of {n} and {nneighbor}")
-
                         # update list: costly, for now ok
                         if build_overlapping_nodes and nneighbor not in self.overlapping_nodes:
                             self.overlapping_nodes.append(nneighbor)
                         if build_overlapping_nodes and n not in self.overlapping_nodes:
                             self.overlapping_nodes.append(n)
-        
-        # print(f"        returning: int({overlaps} / 2)")
+
         return int(overlaps / 2)
 
     # Shared functions
@@ -77,14 +77,11 @@ class GreedyStart(SimulatedAnnealingSpaceSearch):
 
                 pe_sol_cost = self.cost_space_solution(curr_node_pe)
                 pe_ocount = self.nodes_pes_overlap_count(curr_node_pe, build_overlapping_nodes=False)
-                # print(f"    for node_to_move = {node_to_move} and pe = {pe} pe_sol_cost: {pe_sol_cost} best_pe_sol_cost: {best_pe_sol_cost}, pe_ocount: {pe_ocount} best_ocount: {best_ocount}")
                 if pe_sol_cost <= best_pe_sol_cost and pe_ocount < best_ocount:
                     best_pe = pe
 
             curr_node_pe[node_to_move] = best_pe
             ocount = self.nodes_pes_overlap_count(curr_node_pe, build_overlapping_nodes=True)
-
-            # print(f"ocount: {ocount}, {node_to_move}, {curr_node_pe}", end='\r')
 
 
 

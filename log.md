@@ -704,6 +704,10 @@ RANDOM-START_COOLING-RESET-TO-0-45-DYNAMIC-BEST-COST-START-T-COEFF-1-RESTART_RAN
 where both have the list from best to worst. These results put at the top a computed start strategy: the temperature start inverted instead of greedy, next the random start cooling and following the greedy, which shows to be very solid, ednig with the special restart. One thing that I would like to point out is that all strategies have the fixed probability reheating to 0.45, and a startign coefficient of 1 isntead of 10 or 100.
 This list confirms that the rehating to probability, and the computed start do have an advantage and it is probably better to have a T coefficient of 1.
 
+---
+
+Definitely good to consider another way to display timeout on charts
+
 ## Websites used
 
 Collection of online resources used at what time, when and for what.
@@ -1171,9 +1175,65 @@ magari fare più confronti tra categorie
 
 benchmarks con configurazioni inziali diverse con random e con greedy e cercare il mediano di 10+ run quale sia migliore
 
+### 12.05.26
+
+Visualizzazione dati con barre è corretto ma non è abbstanza formale per il report on its own.
+
+4/5 macrocategorie uno per categoria che permette di vedere le strategie più rappresentative e fare più benchmarks per quelle per avere dati più significativi
+20 run per algoritmo per benchmark
+Configurazione iniziale random
+Preventivamente: metti sempre i dati in timeout per cfd
+poi fai benchmarks di tutti tranne cfd
+poi mentre sistemi i dati giri cfd con timeout più basse ~500s e aggiungle ai dati (che non cambieranno)
+
+Aggiungi una croce "TO" per CFD dato che non è risolto (la croce rimane anche per il caso in cui mancano dati per il benchmark, but it will never be missing, so it is never going to be the case that I will say "missing data")
+
+barplot anche del numero di iterazioni: media e mediana -> normalizzare con il numero massimo di iterazioni dello stesso benchmark e algoritmo
+
++ When at a good point upload bp report to overleaf to share it with both Cristian and Professor Pozzi. Write it more keen on conceptually rather than implementation wise
+   Chapter 1: explain more in detail architecture and differences with other architectures, explian more in details Cristian' solution (add Modulo Scheduling) and the problem.
+   description of architectures, compilation techniques, which stepts there are in the compilation, which step i will be working on and modulo scheduling mapping.
+   then explian state of the art, and i focus myself on Cristian' state of the art solution and that I will work on the special search with SA
+   Then explain SA
+   To end it add only the goal of the thesis: the problem has been already explained earlier
+   Chapter 2: Explain algorithms, showing high-level flow of algorithm and pseudocode of algorithms
+   Chapter 3: Results
+   Chapter 4: Conclusions
+
+### 18.05.26
+
+Correct label "time" to "iterations" in graph
+
+Add red cross labe to the legend
+
+Normalize also times, add a new plot for that
+When normalized color the bar opacity based on the normalized value, make a new graph and confront with the one that are already there
+
+Think about representatives algorithm names:
+
+Base SA
+List Heuristic SA
+Quick reheating SA
+Probabilistic Reheating SA
+Start Heuristic Probabilistic Reheating SA
+
+have the base name with SA in it, then each modification adds a few, better is single word to the name.
++ check proposed ones
+
+### 26.05.26
+
+normalize with respect to all benchmarks longer time? This way graphs seems to be misleading, still it gives the problem: We have bitcount that normalized seems to take a lot of time: all times are small and very near to each other and after normalization
+
++ choose more distinct colors for barchart
+
 ### Extra
 
-+ + extra: anything that follows are extra ideas I got while working
+Any extra ideas that we collected and could not work on.
+
++ Refactor of analytics architecture
+
++ overlap start: then SA considers overlap costs when iterating
+
 + heatmap like zones of probability: each node has a heatmap probability of the CGRA based on where its dependencies are positioned withoin the CGRA, the more dependencies are in a zone the more probable such PE will be to be picked when such operation is moved
 
 + maybe if time look at how you can draw the space cost in a 3D plot (3D Contour) with valleys even if it is a more than a 3D space
@@ -1186,7 +1246,6 @@ benchmarks con configurazioni inziali diverse con random e con greedy e cercare 
 + Addition to the random movement algorithm: When you select a node to be moved check that it does not have a loop dependency, if so move it else take the starting dependency node and move it with the current node so that the dependency is respected: make the new placement and for the loop dependency node take the valid nodes for dependency at random select one and place it there or swap it with the ndoe that is already there. Then test it only on CFD problem.
 - Remember to make it two way, if one node gives or receives a loop dependency with another one it has to follow the couple swap
 
-+ dopo
 + nodi con tante out dependencies (solo su nodi con out degree > 2/3 o numero di figli > connettivity degree): i fligli possono essere posizionati solo in un intorno del nodo parente: uno in cui random e prendere un nodo random, guardare il padre e posizionare negli hop one del padre se sono pieni: facciamo lo swap con un nodo lì: benchmarks cfd hotspot3D, terzo con più nodi
 
 + Follows the heatmap of probabilities: look at all parents of a single node, and draw the heatmap as follows: start by colleting parent positions, same position has 1 probability, 1 hop has 1/2, two hops have 1/4 and so on for each parent, then you normalize probabilities. Implement also the staretgy

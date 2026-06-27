@@ -3,6 +3,27 @@ import numpy as np
 
 from analytics.models import Row, AnalyticsRepresentativesColumn
 
+# TODO should make class or constants section
+BENCHMARKS = [
+    "aes",
+    "backprop",
+    "basicmath",
+    "bitcount",
+    "cfd",
+    "crc32",
+    "fft",
+    "gsm",
+    "heartwall",
+    "hotspot3D",
+    "lud",
+    "nw",
+    "particlefilter",
+    "sha1",
+    "sha2",
+    "stringsearch",
+    "susan",
+]
+
 def compute_similar_algorithms(rows: list[Row]) -> list[list[Row]]:
     # we compute similarity
     # straight away: similarity is is the sa algorithm name
@@ -57,7 +78,7 @@ def compute_similar_algorithms(rows: list[Row]) -> list[list[Row]]:
 
 
 def return_top_algorithms(
-        sa_algorithm_type_algorithm_times: dict[str, dict[str, list[float]]],
+        sa_algorithm_type_algorithm_rows: dict[str, dict[str, list[Row]]],
         BENCHMARKS: list[str], WEIGHTS: dict[str, int],
         MANUAL_MACRO_GROUPS: dict[str, list[str]],
         by_mean = True,
@@ -67,9 +88,18 @@ def return_top_algorithms(
     # in a way that the higher node count is the more weight such time has (not totally representative tho)
 
     sa_algos_analytics: list[AnalyticsRepresentativesColumn] = []
-    for sa_algo, algorithm_times in sa_algorithm_type_algorithm_times.items():
+    for sa_algo, algorithm_rows in sa_algorithm_type_algorithm_rows.items():
+        algorithms_mean_timeout: dict[str, bool] = {}
+        algorithms_median_timeout: dict[str, bool] = {}
+
         algorithms_mean: dict[str, float] = {}
         algorithms_median: dict[str, float] = {}
+
+        algorithms_mean_norm: dict[str, float] = {}
+        algorithms_median_norm: dict[str, float] = {}
+
+        algorithms_mean_iteration: dict[str, float | None] = {}
+        algorithms_median_iteration: dict[str, float | None] = {}
 
         # which macrogroup?
         macro_group: str | None = None
@@ -77,19 +107,61 @@ def return_top_algorithms(
             if sa_algo in sa_algos:
                 macro_group = mmg
 
-        for algo, times in algorithm_times.items():
-            np_times = np.array(times)
+        for algo, rows in algorithm_rows.items():
+            np_iterations = np.array([r.iterations for r in rows])
+            mean_iterations = np_iterations.mean()
+
+            np_iterations.sort()
+            niterations = len(np_iterations)
+            median_iterations = np_iterations[niterations // 2] if niterations % 2 != 0 else (np_iterations[niterations // 2 - 1] + np_iterations[niterations // 2]) / 2
+
+            np_times = np.array([r.time_seconds for r in rows])
             mean = np_times.mean()
 
             np_times.sort()
             ntimes = len(np_times)
             median = np_times[ntimes // 2] if ntimes % 2 != 0 else (np_times[ntimes // 2 - 1] + np_times[ntimes // 2]) / 2
 
+            algorithms_mean_timeout[algo] = np.all([r.is_timeout for r in rows])
+            algorithms_median_timeout[algo] = rows[ntimes // 2].is_timeout if ntimes % 2 != 0 else rows[ntimes // 2 - 1].is_timeout and rows[ntimes // 2].is_timeout
+
             algorithms_mean[algo] = mean
             algorithms_median[algo] = median
 
+            algorithms_mean_norm[algo] = mean / np_times.max()
+            algorithms_median_norm[algo] = median / np_times.max()
+
+            algorithms_mean_iteration[algo] = mean_iterations / np_iterations.max()
+            algorithms_median_iteration[algo] = median_iterations / np_iterations.max()
+
         # all analytics
-        sa_algos_analytics.append(AnalyticsRepresentativesColumn(sa_algo, macro_group, algorithms_mean, algorithms_median))
+        sa_algos_analytics.append(AnalyticsRepresentativesColumn(
+            sa_algo,
+            macro_group,
+            algorithms_mean_timeout,
+            algorithms_median_timeout,
+            algorithms_mean,
+            algorithms_median,
+            algorithms_mean_norm,
+            algorithms_median_norm,
+            algorithms_mean_iteration,
+            algorithms_median_iteration
+        ))
+
+        # if some benchmark missing add nones
+        for b in BENCHMARKS:
+            if b not in algorithms_mean_timeout:
+                algorithms_mean_timeout[b] = None
+            if b not in algorithms_median_timeout:
+                algorithms_median_timeout[b] = None
+            if b not in algorithms_mean:
+                algorithms_mean[b] = None
+            if b not in algorithms_median:
+                algorithms_mean[b] = None
+            if b not in algorithms_mean_iteration:
+                algorithms_mean_iteration[b] = None
+            if b not in algorithms_median_iteration:
+                algorithms_median_iteration[b] = None
 
     # still, how can i evaluate algos that do not have all benchmarks within it?
     # add a malus to balance them out?
@@ -100,9 +172,16 @@ def return_top_algorithms(
     # filter out missing benchmarks
     to_delete_indexes: list[AnalyticsRepresentativesColumn] = []
     for algo in sa_algos_analytics:
-        if len(algo.algorithm_mean_time) < len(BENCHMARKS) or (len(algo.algorithm_mean_time) == len(BENCHMARKS) - 1 and "cfd" not in algo.algorithm_mean_time):
+        algorithm_mean_time_nones = 0
+        for time in algo.algorithm_mean_time.values():
+            if not time:
+                algorithm_mean_time_nones += 1
+
+        not_none_algorithm_mean_times = len(algo.algorithm_mean_time) - algorithm_mean_time_nones
+
+        if not_none_algorithm_mean_times < len(BENCHMARKS) and algo.algorithm_mean_time["cfd"]:
             to_delete_indexes.append(algo)
-    
+
     for arc in to_delete_indexes:
         sa_algos_analytics.remove(arc)
 

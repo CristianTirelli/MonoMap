@@ -1,11 +1,15 @@
 # strategies
+from simulated_annealing_space_search.strategies.poisson_routine_types import PoissonRoutineEnum
+from simulated_annealing_space_search.strategies.worst_positioned_nodes_poisson import WorstPositionedNodesPoisson
+
 from simulated_annealing_space_search.strategies.random_node_with_swap import RandomNodeWithSwap
 from simulated_annealing_space_search.strategies.random_node_with_swap import RandomNodeWithSwapNewRoutine
 
 from simulated_annealing_space_search.strategies.random_node import RandomNode
 from simulated_annealing_space_search.strategies.visits_heuristic import RandomNodeWithSwapAndVisitsHeuristic
 
-# rotuines
+# routines
+from simulated_annealing_space_search.routines.cooling import Cooling
 from simulated_annealing_space_search.routines.cooling_reset_sma import CoolingResetSma
 from simulated_annealing_space_search.routines.morpher_reset_sma import MorpherResetSma
 
@@ -25,6 +29,9 @@ from simulated_annealing_space_search.starts.temperature_start_centered import T
 from simulated_annealing_space_search.starts.temperature_start_centered import TemperatureStartCenteredInverted
 
 # classic
+class RandomNodeCooling(RandomNode, Cooling, RandomStart):
+    pass
+
 class RandomNodeCoolingResetSma(RandomNode, CoolingResetSma, RandomStart):
     pass
 
@@ -34,6 +41,13 @@ class RandomNodeMorpherResetSma(RandomNode, MorpherResetSma, RandomStart):
 class RandomNodeWithSwapMorpherResetSma(RandomNodeWithSwap, MorpherResetSma, RandomStart):
     pass
 
+
+# list selection, we do upgrade with spike
+class WorstPositionedNodesPoissonCoolingResetSmaRandomStart(WorstPositionedNodesPoisson, CoolingResetSma, RandomStart):
+    pass
+# no spike
+class WorstPositionedNodesPoissonCoolingRandomStart(WorstPositionedNodesPoisson, Cooling, RandomStart):
+    pass
 
 # new swap routine
 class RandomNodeWithSwapNewRoutineCoolingResetSma(RandomNodeWithSwapNewRoutine, CoolingResetSma, RandomStart):
@@ -84,6 +98,12 @@ class RandomNodeWithSwapCoolingResetToProbabilityDynamicBestCostSmaRestartRandom
     pass
 
 
+# poisson pick, greedy start and reheating to probability
+class WorstPositionedNodesPoissonCoolingResetToProbabilityDynamicBestCostSmaGreedyStart(WorstPositionedNodesPoisson, CoolingResetToProbabilityDynamicBestCostSma, GreedyStart):
+    pass
+# list selection, we do upgrade with spike
+class WorstPositionedNodesPoissonCoolingResetToProbabilityDynamicBestCostSmaRandomStart(WorstPositionedNodesPoisson, CoolingResetToProbabilityDynamicBestCostSma, RandomStart):
+    pass
 
 # visits heuristic
 class RandomNodeWithSwapAndVisitsHeuristicCoolingResetSma(RandomNodeWithSwapAndVisitsHeuristic, CoolingResetSma, RandomStart):

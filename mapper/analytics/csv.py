@@ -15,7 +15,14 @@ def load_csv(csv_path: Path, archived_data_prefix: Optional[str]) -> list[Row]:
     with open(csv_path, newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            rows.append(Row.parse_row(row, archived_data_prefix))
+            parsed_row: Row = Row.parse_row(row, archived_data_prefix)
+
+            # filter for faulty data when i still used clock time
+            delta_clock_time = parsed_row.time_seconds - 4000
+            if 0 < delta_clock_time and 1 <= delta_clock_time:
+                continue
+            
+            rows.append(parsed_row)
     return rows
 
 
@@ -47,7 +54,7 @@ def write_analytics_csv(BASE_PATH: Path, algorithm_names: list[str], analytics_c
     if isinstance(analytics_column[0], AnalyticsRepresentativesColumn):
         is_representatives = True
 
-    BASE_PATH.mkdir(exist_ok=True)
+    BASE_PATH.mkdir(parents=True, exist_ok=True)
     file_name = f"analytics{"-representatives" if is_representatives else ""}{"" if not id else f"-{id}"}.csv"
     output_path = BASE_PATH / file_name
 
